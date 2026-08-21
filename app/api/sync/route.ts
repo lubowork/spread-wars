@@ -1,25 +1,74 @@
 import { NextResponse } from 'next/server'
+import { createClient } from '../../../lib/supabase-server'
 import { createAdminClient } from '../../../lib/supabase-admin'
 import { getCollegeFootballOdds } from '../../../lib/odds-api'
 
-function isAuthorized(request: Request) {
+async function isAuthorized(
+  request: Request
+) {
+  // Allow Supabase Cron
   const authHeader =
-    request.headers.get('authorization')
+    request.headers.get(
+      'authorization'
+    )
 
-  const expected =
-    `Bearer ${process.env.CRON_SECRET}`
+  const cronSecret =
+    process.env.CRON_SECRET
 
-  return (
-    process.env.CRON_SECRET &&
-    authHeader === expected
-  )
+  if (
+    cronSecret &&
+    authHeader ===
+      `Bearer ${cronSecret}`
+  ) {
+    return true
+  }
+
+  // Otherwise require a logged-in
+  // Geoff or General account
+  const authSupabase =
+    await createClient()
+
+  const {
+    data: { user },
+  } =
+    await authSupabase.auth.getUser()
+
+  if (!user) {
+    return false
+  }
+
+  const supabase =
+    createAdminClient()
+
+  const {
+    data: player,
+    error,
+  } = await supabase
+    .from('players')
+    .select('id')
+    .eq(
+      'auth_user_id',
+      user.id
+    )
+    .maybeSingle()
+
+  if (error || !player) {
+    return false
+  }
+
+  return true
 }
 
 export async function POST(
   request: Request
 ) {
   try {
-    if (!isAuthorized(request)) {
+    const authorized =
+      await isAuthorized(
+        request
+      )
+
+    if (!authorized) {
       return NextResponse.json(
         {
           success: false,

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
+import { createClient } from '../../../lib/supabase-server'
 import { createAdminClient } from '../../../lib/supabase-admin'
 
-function isAuthorized(
+async function isAuthorized(
   request: Request
 ) {
   const authHeader =
@@ -9,20 +10,63 @@ function isAuthorized(
       'authorization'
     )
 
-  const expected =
-    `Bearer ${process.env.CRON_SECRET}`
+  const cronSecret =
+    process.env.CRON_SECRET
 
-  return (
-    !!process.env.CRON_SECRET &&
-    authHeader === expected
-  )
+  // Allow Supabase Cron
+  if (
+    cronSecret &&
+    authHeader ===
+      `Bearer ${cronSecret}`
+  ) {
+    return true
+  }
+
+  // Allow signed-in player
+  const authSupabase =
+    await createClient()
+
+  const {
+    data: { user },
+  } =
+    await authSupabase.auth.getUser()
+
+  if (!user) {
+    return false
+  }
+
+  const supabase =
+    createAdminClient()
+
+  const {
+    data: player,
+    error,
+  } = await supabase
+    .from('players')
+    .select('id')
+    .eq(
+      'auth_user_id',
+      user.id
+    )
+    .maybeSingle()
+
+  if (error || !player) {
+    return false
+  }
+
+  return true
 }
 
 export async function POST(
   request: Request
 ) {
   try {
-    if (!isAuthorized(request)) {
+    const authorized =
+      await isAuthorized(
+        request
+      )
+
+    if (!authorized) {
       return NextResponse.json(
         {
           success: false,
@@ -86,9 +130,12 @@ export async function POST(
     let skippedUnlocked = 0
 
     for (
-      const scoreGame of scores
+      const scoreGame of
+      scores
     ) {
-      if (!scoreGame.completed) {
+      if (
+        !scoreGame.completed
+      ) {
         continue
       }
 
@@ -124,15 +171,15 @@ export async function POST(
         )
 
       if (
-        Number.isNaN(homeScore) ||
-        Number.isNaN(awayScore)
+        Number.isNaN(
+          homeScore
+        ) ||
+        Number.isNaN(
+          awayScore
+        )
       ) {
         continue
       }
-
-      // ---------------------------------------------
-      // FIND OUR GAME
-      // ---------------------------------------------
 
       const {
         data: storedGame,
@@ -160,12 +207,9 @@ export async function POST(
         continue
       }
 
-      // ---------------------------------------------
-      // UPDATE FINAL SCORE
-      // ---------------------------------------------
-
       const {
-        error: updateGameError,
+        error:
+          updateGameError,
       } = await supabase
         .from('games')
         .update({
@@ -190,10 +234,6 @@ export async function POST(
       }
 
       gamesUpdated++
-
-      // ---------------------------------------------
-      // GET PENDING PICKS
-      // ---------------------------------------------
 
       const {
         data: picks,
@@ -228,8 +268,8 @@ export async function POST(
         const pick of
         picks ?? []
       ) {
-        // Automatic picks MUST have
-        // their one-hour line locked.
+        // Never grade an automatic pick
+        // without an official locked line.
         if (
           pick.is_automatic &&
           !pick.line_locked
@@ -256,8 +296,11 @@ export async function POST(
           continue
         }
 
-        let teamScore: number
-        let opponentScore: number
+        let teamScore:
+          number
+
+        let opponentScore:
+          number
 
         if (
           pick.team ===
@@ -287,9 +330,9 @@ export async function POST(
           officialSpread
 
         let result:
-          'win' |
-          'loss' |
-          'push'
+          | 'win'
+          | 'loss'
+          | 'push'
 
         if (
           adjustedMargin > 0

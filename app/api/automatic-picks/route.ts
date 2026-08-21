@@ -1,20 +1,65 @@
 import { NextResponse } from 'next/server'
+import { createClient } from '../../../lib/supabase-server'
 import { createAdminClient } from '../../../lib/supabase-admin'
 
-function isAuthorized(request: Request) {
+async function isAuthorized(
+  request: Request
+) {
   const authHeader =
-    request.headers.get('authorization')
+    request.headers.get(
+      'authorization'
+    )
 
-  const expected =
-    `Bearer ${process.env.CRON_SECRET}`
+  const cronSecret =
+    process.env.CRON_SECRET
 
-  return (
-    !!process.env.CRON_SECRET &&
-    authHeader === expected
-  )
+  // Supabase Cron
+  if (
+    cronSecret &&
+    authHeader ===
+      `Bearer ${cronSecret}`
+  ) {
+    return true
+  }
+
+  // Logged-in Geoff / General
+  const authSupabase =
+    await createClient()
+
+  const {
+    data: { user },
+  } =
+    await authSupabase.auth.getUser()
+
+  if (!user) {
+    return false
+  }
+
+  const supabase =
+    createAdminClient()
+
+  const {
+    data: player,
+    error,
+  } = await supabase
+    .from('players')
+    .select('id')
+    .eq(
+      'auth_user_id',
+      user.id
+    )
+    .maybeSingle()
+
+  if (error || !player) {
+    return false
+  }
+
+  return true
 }
 
-function normalizeTeam(value: string) {
+function normalizeTeam(
+  value: string
+) {
   return value
     .trim()
     .toLowerCase()
@@ -25,22 +70,27 @@ function matchesAutomaticTeam(
   actualTeam: string
 ) {
   const automatic =
-    normalizeTeam(automaticTeam)
+    normalizeTeam(
+      automaticTeam
+    )
 
   const actual =
-    normalizeTeam(actualTeam)
+    normalizeTeam(
+      actualTeam
+    )
 
-  // Penn State
   if (
-    automatic.includes('penn state')
+    automatic.includes(
+      'penn state'
+    )
   ) {
     return actual.includes(
       'penn state'
     )
   }
 
-  // Miami means Miami Hurricanes,
-  // never Miami (OH)
+  // Miami means the Hurricanes,
+  // never Miami (OH).
   if (automatic === 'miami') {
     return (
       actual === 'miami' ||
@@ -59,11 +109,12 @@ export async function POST(
   request: Request
 ) {
   try {
-    // --------------------------------------------------
-    // AUTHORIZATION
-    // --------------------------------------------------
+    const authorized =
+      await isAuthorized(
+        request
+      )
 
-    if (!isAuthorized(request)) {
+    if (!authorized) {
       return NextResponse.json(
         {
           success: false,
@@ -76,12 +127,9 @@ export async function POST(
     const supabase =
       createAdminClient()
 
-    // --------------------------------------------------
+    // -----------------------------------------------
     // CURRENT ACTIVE WEEK
-    //
-    // This now includes starts_at / ends_at so automatic
-    // picks only look inside the active week's game window.
-    // --------------------------------------------------
+    // -----------------------------------------------
 
     const {
       data: week,
@@ -126,9 +174,9 @@ export async function POST(
       )
     }
 
-    // --------------------------------------------------
+    // -----------------------------------------------
     // PLAYERS
-    // --------------------------------------------------
+    // -----------------------------------------------
 
     const {
       data: players,
@@ -165,13 +213,15 @@ export async function POST(
     const geoff =
       players.find(
         (player) =>
-          player.name === 'Geoff'
+          player.name ===
+          'Geoff'
       )
 
     const general =
       players.find(
         (player) =>
-          player.name === 'General'
+          player.name ===
+          'General'
       )
 
     if (!geoff || !general) {
@@ -196,18 +246,9 @@ export async function POST(
       },
     ]
 
-    // --------------------------------------------------
-    // GAMES FOR ACTIVE WEEK
-    //
-    // If starts_at exists:
-    //   start_time >= starts_at
-    //
-    // If ends_at exists:
-    //   start_time < ends_at
-    //
-    // If starts_at is blank:
-    //   fall back to future games only.
-    // --------------------------------------------------
+    // -----------------------------------------------
+    // GAMES INSIDE ACTIVE WEEK WINDOW
+    // -----------------------------------------------
 
     let gamesQuery =
       supabase
@@ -234,7 +275,8 @@ export async function POST(
       gamesQuery =
         gamesQuery.gte(
           'start_time',
-          new Date().toISOString()
+          new Date()
+            .toISOString()
         )
     }
 
@@ -268,9 +310,9 @@ export async function POST(
     let currentLineNotFound = 0
     let lockLineNotFound = 0
 
-    // --------------------------------------------------
+    // -----------------------------------------------
     // PROCESS GEOFF + GENERAL
-    // --------------------------------------------------
+    // -----------------------------------------------
 
     for (
       const automaticPlayer of
@@ -281,10 +323,7 @@ export async function POST(
         pickNumber,
       } = automaticPlayer
 
-      // ------------------------------------------------
-      // FIND THIS PLAYER'S AUTO TEAM GAME
-      // ------------------------------------------------
-
+      // Find automatic team's game.
       const game =
         (games ?? []).find(
           (candidate) =>
@@ -311,11 +350,9 @@ export async function POST(
           ? game.home_team
           : game.away_team
 
-      // ------------------------------------------------
-      // EXACT LOCK TIME
-      //
-      // Kickoff minus exactly 60 minutes.
-      // ------------------------------------------------
+      // ---------------------------------------------
+      // EXACT ONE-HOUR LOCK TIME
+      // ---------------------------------------------
 
       const kickoff =
         new Date(
@@ -332,9 +369,9 @@ export async function POST(
         Date.now() >=
         lockTime.getTime()
 
-      // ------------------------------------------------
-      // FIND EXISTING AUTO PICK
-      // ------------------------------------------------
+      // ---------------------------------------------
+      // EXISTING AUTOMATIC PICK
+      // ---------------------------------------------
 
       const {
         data: existingPick,
@@ -370,10 +407,6 @@ export async function POST(
         )
       }
 
-      // ------------------------------------------------
-      // IF ALREADY LOCKED, NEVER TOUCH IT AGAIN
-      // ------------------------------------------------
-
       if (
         existingPick?.line_locked
       ) {
@@ -381,15 +414,17 @@ export async function POST(
         continue
       }
 
-      // ------------------------------------------------
-      // BEFORE LOCK:
-      // USE LATEST CURRENT DRAFTKINGS LINE
-      // ------------------------------------------------
+      // ---------------------------------------------
+      // BEFORE LOCK TIME
+      //
+      // Show the latest current line.
+      // ---------------------------------------------
 
       if (!shouldLock) {
         const {
           data: currentOdds,
-          error: currentOddsError,
+          error:
+            currentOddsError,
         } = await supabase
           .from('odds')
           .select(`
@@ -415,7 +450,8 @@ export async function POST(
           .order(
             'fetched_at',
             {
-              ascending: false,
+              ascending:
+                false,
             }
           )
           .limit(1)
@@ -446,10 +482,6 @@ export async function POST(
           continue
         }
 
-        // ----------------------------------------------
-        // UPDATE EXISTING UNLOCKED AUTO PICK
-        // ----------------------------------------------
-
         if (existingPick) {
           const {
             error: updateError,
@@ -466,7 +498,8 @@ export async function POST(
                 currentSpread,
 
               lock_time:
-                lockTime.toISOString(),
+                lockTime
+                  .toISOString(),
 
               line_locked:
                 false,
@@ -488,10 +521,6 @@ export async function POST(
           refreshed++
           continue
         }
-
-        // ----------------------------------------------
-        // CREATE NEW UNLOCKED AUTO PICK
-        // ----------------------------------------------
 
         const {
           error: insertError,
@@ -526,7 +555,8 @@ export async function POST(
               'pending',
 
             lock_time:
-              lockTime.toISOString(),
+              lockTime
+                .toISOString(),
 
             locked_spread:
               null,
@@ -548,19 +578,17 @@ export async function POST(
         continue
       }
 
-      // ------------------------------------------------
+      // ---------------------------------------------
       // AT / AFTER LOCK TIME
       //
-      // Use the newest DraftKings snapshot whose
-      // fetched_at is <= exact lock time.
-      //
-      // This prevents a post-cutoff line from ever
-      // becoming the official locked line.
-      // ------------------------------------------------
+      // Only use a snapshot fetched at or before
+      // the exact cutoff.
+      // ---------------------------------------------
 
       const {
         data: lockOdds,
-        error: lockOddsError,
+        error:
+          lockOddsError,
       } = await supabase
         .from('odds')
         .select(`
@@ -585,12 +613,14 @@ export async function POST(
         )
         .lte(
           'fetched_at',
-          lockTime.toISOString()
+          lockTime
+            .toISOString()
         )
         .order(
           'fetched_at',
           {
-            ascending: false,
+            ascending:
+              false,
           }
         )
         .limit(1)
@@ -601,11 +631,6 @@ export async function POST(
           lockOddsError.message
         )
       }
-
-      // ------------------------------------------------
-      // SAFETY:
-      // NEVER SUBSTITUTE A LATER LINE
-      // ------------------------------------------------
 
       if (!lockOdds) {
         lockLineNotFound++
@@ -631,9 +656,9 @@ export async function POST(
         continue
       }
 
-      // ------------------------------------------------
+      // ---------------------------------------------
       // LOCK EXISTING PICK
-      // ------------------------------------------------
+      // ---------------------------------------------
 
       if (existingPick) {
         const {
@@ -657,10 +682,12 @@ export async function POST(
               true,
 
             lock_time:
-              lockTime.toISOString(),
+              lockTime
+                .toISOString(),
 
             locked_at:
-              lockTime.toISOString(),
+              lockTime
+                .toISOString(),
           })
           .eq(
             'id',
@@ -677,15 +704,13 @@ export async function POST(
         continue
       }
 
-      // ------------------------------------------------
-      // CREATE AUTO PICK ALREADY LOCKED
-      //
-      // Handles a case where the automation first sees
-      // the game after the cutoff.
-      // ------------------------------------------------
+      // ---------------------------------------------
+      // CREATE ALREADY-LOCKED PICK
+      // ---------------------------------------------
 
       const {
-        error: lockedInsertError,
+        error:
+          lockedInsertError,
       } = await supabase
         .from('picks')
         .insert({
@@ -717,7 +742,8 @@ export async function POST(
             'pending',
 
           lock_time:
-            lockTime.toISOString(),
+            lockTime
+              .toISOString(),
 
           locked_spread:
             officialSpread,
@@ -726,7 +752,8 @@ export async function POST(
             true,
 
           locked_at:
-            lockTime.toISOString(),
+            lockTime
+              .toISOString(),
         })
 
       if (lockedInsertError) {
@@ -738,10 +765,6 @@ export async function POST(
       created++
       locked++
     }
-
-    // --------------------------------------------------
-    // RESPONSE
-    // --------------------------------------------------
 
     return NextResponse.json({
       success: true,
