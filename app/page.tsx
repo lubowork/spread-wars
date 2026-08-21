@@ -1,12 +1,147 @@
 import { redirect } from 'next/navigation'
-import { createAdminClient } from '../lib/supabase-admin'
 import { createClient } from '../lib/supabase-server'
-
+import { createAdminClient } from '../lib/supabase-admin'
 import DraftBoard from './components/DraftBoard'
 import NotificationButton from './components/NotificationButton'
-import TestNotificationButton from './components/TestNotificationButton'
 
-export default async function Home() {
+type Player = {
+  id: string
+  name: string
+  automatic_team: string
+}
+
+type Pick = {
+  id: string
+  week_id: string
+  player_id: string
+  game_id: string
+  pick_number: number
+  team: string
+  spread: number
+  sportsbook: string
+  is_automatic: boolean
+  result: string
+  locked_at: string | null
+  lock_time: string | null
+  locked_spread: number | null
+  line_locked: boolean
+}
+
+type Game = {
+  id: string
+  external_game_id: string
+  home_team: string
+  away_team: string
+  start_time: string
+  completed: boolean
+}
+
+type Odd = {
+  game_id: string
+  team: string
+  spread: number
+  price: number | null
+  fetched_at: string
+}
+
+type DraftGame = {
+  id: string
+  home_team: string
+  away_team: string
+  start_time: string
+  odds: {
+    team: string
+    spread: number
+    price: number | null
+    fetched_at: string
+  }[]
+}
+
+type ApprovedAdjustment = {
+  target_player_id: string
+  wins_delta: number
+  losses_delta: number
+  pushes_delta: number
+}
+
+function calculateRecord(
+  playerId: string,
+  picks: Pick[],
+  adjustments: ApprovedAdjustment[]
+) {
+  const playerPicks =
+    picks.filter(
+      (pick) =>
+        pick.player_id === playerId
+    )
+
+  let wins =
+    playerPicks.filter(
+      (pick) =>
+        pick.result === 'win'
+    ).length
+
+  let losses =
+    playerPicks.filter(
+      (pick) =>
+        pick.result === 'loss'
+    ).length
+
+  let pushes =
+    playerPicks.filter(
+      (pick) =>
+        pick.result === 'push'
+    ).length
+
+  const playerAdjustments =
+    adjustments.filter(
+      (adjustment) =>
+        adjustment.target_player_id ===
+        playerId
+    )
+
+  for (
+    const adjustment of
+    playerAdjustments
+  ) {
+    wins +=
+      Number(
+        adjustment.wins_delta
+      ) || 0
+
+    losses +=
+      Number(
+        adjustment.losses_delta
+      ) || 0
+
+    pushes +=
+      Number(
+        adjustment.pushes_delta
+      ) || 0
+  }
+
+  return {
+    wins,
+    losses,
+    pushes,
+  }
+}
+
+function formatSpread(
+  spread: number
+) {
+  if (spread > 0) {
+    return `+${spread}`
+  }
+
+  return `${spread}`
+}
+
+export default async function HomePage() {
+  // --------------------------------------------------
+  // AUTH
+  // --------------------------------------------------
+
   const authSupabase =
     await createClient()
 
@@ -34,9 +169,7 @@ export default async function Home() {
     .select(`
       id,
       name,
-      automatic_team,
-      phone_number,
-      auth_user_id
+      automatic_team
     `)
     .eq(
       'auth_user_id',
@@ -44,35 +177,23 @@ export default async function Home() {
     )
     .maybeSingle()
 
-  if (loggedInPlayerError) {
-    throw new Error(
-      loggedInPlayerError.message
-    )
-  }
-
-  if (!loggedInPlayer) {
+  if (
+    loggedInPlayerError ||
+    !loggedInPlayer
+  ) {
     return (
-      <main className="min-h-screen bg-slate-950 p-10 text-white">
-        <h1 className="text-3xl font-black">
-          Spread Wars
-        </h1>
+      <main className="min-h-screen bg-slate-950 p-6 text-white">
+        <div className="mx-auto max-w-4xl">
 
-        <p className="mt-4 text-red-400">
-          Your login is not linked to a Spread Wars player.
-        </p>
+          <h1 className="text-3xl font-black">
+            Spread Wars
+          </h1>
 
-        <form
-          action="/auth/signout"
-          method="post"
-          className="mt-6"
-        >
-          <button
-            type="submit"
-            className="rounded-xl bg-slate-800 px-4 py-3 font-bold"
-          >
-            Sign Out
-          </button>
-        </form>
+          <div className="mt-6 rounded-2xl border border-red-900 bg-red-950/40 p-6 text-red-200">
+            Your login is not linked to a Spread Wars player.
+          </div>
+
+        </div>
       </main>
     )
   }
@@ -82,7 +203,7 @@ export default async function Home() {
   // --------------------------------------------------
 
   const {
-    data: players,
+    data: playersData,
     error: playersError,
   } = await supabase
     .from('players')
@@ -99,10 +220,11 @@ export default async function Home() {
     )
   }
 
+  const players =
+    (playersData ?? []) as Player[]
+
   // --------------------------------------------------
-  // CURRENT ACTIVE WEEK
-  //
-  // No hardcoded season or week number.
+  // ACTIVE WEEK
   // --------------------------------------------------
 
   const {
@@ -138,22 +260,50 @@ export default async function Home() {
     )
   }
 
-  if (!players || !week) {
+  if (!week) {
     return (
-      <main className="min-h-screen bg-slate-950 p-10 text-white">
-        <h1 className="text-3xl font-black">
-          Spread Wars
-        </h1>
+      <main className="min-h-screen bg-slate-950 p-6 text-white">
 
-        <p className="mt-4 text-red-400">
-          No active Spread Wars week was found.
-        </p>
+        <div className="mx-auto max-w-5xl">
+
+          <div className="flex flex-wrap items-center justify-between gap-4">
+
+            <div>
+              <h1 className="text-4xl font-black">
+                Spread Wars
+              </h1>
+
+              <p className="mt-1 text-slate-400">
+                College Football
+              </p>
+            </div>
+
+            <form
+              action="/auth/signout"
+              method="post"
+            >
+              <button
+                type="submit"
+                className="rounded-xl border border-slate-700 px-4 py-2 font-bold text-slate-300"
+              >
+                Sign Out
+              </button>
+            </form>
+
+          </div>
+
+          <div className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+            No active week is currently available.
+          </div>
+
+        </div>
+
       </main>
     )
   }
 
   // --------------------------------------------------
-  // SEASON FOR ACTIVE WEEK
+  // SEASON
   // --------------------------------------------------
 
   const {
@@ -169,7 +319,7 @@ export default async function Home() {
       'id',
       week.season_id
     )
-    .maybeSingle()
+    .single()
 
   if (seasonError) {
     throw new Error(
@@ -182,26 +332,35 @@ export default async function Home() {
   // --------------------------------------------------
 
   const {
-    data: picks,
+    data: picksData,
     error: picksError,
   } = await supabase
     .from('picks')
     .select(`
       id,
-      pick_number,
+      week_id,
       player_id,
       game_id,
+      pick_number,
       team,
       spread,
+      sportsbook,
       is_automatic,
-      result
+      result,
+      locked_at,
+      lock_time,
+      locked_spread,
+      line_locked
     `)
     .eq(
       'week_id',
       week.id
     )
     .order(
-      'pick_number'
+      'pick_number',
+      {
+        ascending: true,
+      }
     )
 
   if (picksError) {
@@ -210,22 +369,23 @@ export default async function Home() {
     )
   }
 
+  const picks =
+    (picksData ?? []) as Pick[]
+
   // --------------------------------------------------
   // APPROVED ADJUSTMENTS
   // --------------------------------------------------
 
   const {
-    data: adjustments,
+    data: adjustmentsData,
     error: adjustmentsError,
   } = await supabase
     .from('result_adjustments')
     .select(`
-      id,
       target_player_id,
       wins_delta,
       losses_delta,
-      pushes_delta,
-      status
+      pushes_delta
     `)
     .eq(
       'week_id',
@@ -242,113 +402,24 @@ export default async function Home() {
     )
   }
 
-  // --------------------------------------------------
-  // WEEKLY RECORD
-  // --------------------------------------------------
-
-  function getRecordForPlayer(
-    playerId: string
-  ) {
-    const playerPicks =
-      (picks ?? []).filter(
-        (pick) =>
-          pick.player_id ===
-          playerId
-      )
-
-    let wins =
-      playerPicks.filter(
-        (pick) =>
-          pick.result === 'win'
-      ).length
-
-    let losses =
-      playerPicks.filter(
-        (pick) =>
-          pick.result === 'loss'
-      ).length
-
-    let pushes =
-      playerPicks.filter(
-        (pick) =>
-          pick.result === 'push'
-      ).length
-
-    const approvedAdjustments =
-      (adjustments ?? []).filter(
-        (adjustment) =>
-          adjustment.target_player_id ===
-          playerId
-      )
-
-    for (
-      const adjustment of
-      approvedAdjustments
-    ) {
-      wins +=
-        Number(
-          adjustment.wins_delta
-        ) || 0
-
-      losses +=
-        Number(
-          adjustment.losses_delta
-        ) || 0
-
-      pushes +=
-        Number(
-          adjustment.pushes_delta
-        ) || 0
-    }
-
-    return {
-      wins,
-      losses,
-      pushes,
-    }
-  }
+  const adjustments =
+    (adjustmentsData ??
+      []) as ApprovedAdjustment[]
 
   // --------------------------------------------------
-  // PICKED GAME IDS
+  // GAMES INSIDE ACTIVE WEEK WINDOW
   // --------------------------------------------------
-
-  const pickedGameIds =
-    new Set(
-      (picks ?? []).map(
-        (pick) =>
-          pick.game_id
-      )
-    )
-
-  // --------------------------------------------------
-  // ACTIVE WEEK GAME WINDOW
-  //
-  // If dates are filled in:
-  // only show games inside the week.
-  //
-  // If dates are temporarily blank:
-  // fall back to future games.
-  // --------------------------------------------------
-
-  const now =
-    new Date().toISOString()
 
   let gamesQuery =
     supabase
       .from('games')
       .select(`
         id,
+        external_game_id,
         home_team,
         away_team,
         start_time,
-        odds (
-          team,
-          spread,
-          price,
-          sportsbook,
-          market,
-          fetched_at
-        )
+        completed
       `)
       .eq(
         'completed',
@@ -365,7 +436,7 @@ export default async function Home() {
     gamesQuery =
       gamesQuery.gte(
         'start_time',
-        now
+        new Date().toISOString()
       )
   }
 
@@ -378,11 +449,14 @@ export default async function Home() {
   }
 
   const {
-    data: games,
+    data: gamesData,
     error: gamesError,
   } =
     await gamesQuery.order(
-      'start_time'
+      'start_time',
+      {
+        ascending: true,
+      }
     )
 
   if (gamesError) {
@@ -391,164 +465,285 @@ export default async function Home() {
     )
   }
 
+  const allGames =
+    (gamesData ?? []) as Game[]
+
   // --------------------------------------------------
-  // AVAILABLE GAMES
+  // REMOVE GAMES THAT HAVE ALREADY STARTED
+  //
+  // DraftBoard separately removes drafted games.
   // --------------------------------------------------
 
-  const gamesWithOdds =
-    (games ?? [])
-      .filter(
-        (game) =>
-          !pickedGameIds.has(
-            game.id
-          )
+  const now =
+    Date.now()
+
+  const futureGames =
+    allGames.filter(
+      (game) =>
+        new Date(
+          game.start_time
+        ).getTime() > now
+    )
+
+  // --------------------------------------------------
+  // LOAD DRAFTKINGS ODDS FOR THOSE GAMES
+  // --------------------------------------------------
+
+  const futureGameIds =
+    futureGames.map(
+      (game) =>
+        game.id
+    )
+
+  let odds: Odd[] = []
+
+  if (
+    futureGameIds.length > 0
+  ) {
+    const {
+      data: oddsData,
+      error: oddsError,
+    } = await supabase
+      .from('odds')
+      .select(`
+        game_id,
+        team,
+        spread,
+        price,
+        fetched_at
+      `)
+      .in(
+        'game_id',
+        futureGameIds
       )
-      .map(
-        (game) => ({
-          ...game,
-
-          odds:
-            (game.odds ?? [])
-              .filter(
-                (odd) =>
-                  odd.sportsbook ===
-                    'DraftKings' &&
-                  odd.market ===
-                    'spreads'
-              )
-              .map(
-                (odd) => ({
-                  team:
-                    odd.team,
-
-                  spread:
-                    Number(
-                      odd.spread
-                    ),
-
-                  price:
-                    odd.price,
-
-                  fetched_at:
-                    odd.fetched_at,
-                })
-              ),
-        })
+      .eq(
+        'sportsbook',
+        'DraftKings'
+      )
+      .eq(
+        'market',
+        'spreads'
+      )
+      .order(
+        'fetched_at',
+        {
+          ascending: false,
+        }
       )
 
+    if (oddsError) {
+      throw new Error(
+        oddsError.message
+      )
+    }
+
+    odds =
+      (oddsData ?? []) as Odd[]
+  }
+
   // --------------------------------------------------
-  // NORMAL PICKS
+  // BUILD EXACT GAME SHAPE DRAFTBOARD EXPECTS
+  //
+  // DraftBoard expects:
+  //
+  // {
+  //   id,
+  //   home_team,
+  //   away_team,
+  //   start_time,
+  //   odds: [...]
+  // }
   // --------------------------------------------------
 
-  const normalPicks =
-    (picks ?? []).filter(
-      (pick) =>
-        !pick.is_automatic
+  const draftGames: DraftGame[] =
+    futureGames.map(
+      (game) => ({
+        id:
+          game.id,
+
+        home_team:
+          game.home_team,
+
+        away_team:
+          game.away_team,
+
+        start_time:
+          game.start_time,
+
+        odds:
+          odds
+            .filter(
+              (odd) =>
+                odd.game_id ===
+                game.id
+            )
+            .map(
+              (odd) => ({
+                team:
+                  odd.team,
+
+                spread:
+                  Number(
+                    odd.spread
+                  ),
+
+                price:
+                  odd.price === null
+                    ? null
+                    : Number(
+                        odd.price
+                      ),
+
+                fetched_at:
+                  odd.fetched_at,
+              })
+            ),
+      })
     )
 
   // --------------------------------------------------
   // CURRENT TURN
   // --------------------------------------------------
 
-  const firstPicker =
+  const normalPicks =
+    picks.filter(
+      (pick) =>
+        !pick.is_automatic
+    )
+
+  let currentTurnPlayerId =
+    week.first_picker_id
+
+  if (
+    players.length === 2 &&
+    normalPicks.length % 2 === 1
+  ) {
+    const otherPlayer =
+      players.find(
+        (player) =>
+          player.id !==
+          week.first_picker_id
+      )
+
+    if (otherPlayer) {
+      currentTurnPlayerId =
+        otherPlayer.id
+    }
+  }
+
+  const currentTurnPlayer =
     players.find(
       (player) =>
         player.id ===
-        week.first_picker_id
+        currentTurnPlayerId
     )
 
-  const secondPicker =
-    players.find(
-      (player) =>
-        player.id !==
-        week.first_picker_id
+  // --------------------------------------------------
+  // WEEK RECORDS
+  // --------------------------------------------------
+
+  const playerRecords =
+    players.map(
+      (player) => ({
+        player,
+
+        record:
+          calculateRecord(
+            player.id,
+            picks,
+            adjustments
+          ),
+      })
     )
 
-  const nextPickNumber =
-    normalPicks.length + 3
+  // --------------------------------------------------
+  // AUTOMATIC PICKS
+  // --------------------------------------------------
 
-  const currentPlayer =
-    normalPicks.length % 2 === 0
-      ? firstPicker
-      : secondPicker
+  const automaticPicks =
+    picks.filter(
+      (pick) =>
+        pick.is_automatic
+    )
 
-  const isMyTurn =
-    currentPlayer?.id ===
-    loggedInPlayer.id
+  function automaticPickForPlayer(
+    playerId: string
+  ) {
+    return automaticPicks.find(
+      (pick) =>
+        pick.player_id ===
+        playerId
+    )
+  }
 
   // --------------------------------------------------
   // PAGE
   // --------------------------------------------------
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white">
+    <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6">
 
-      <div className="mx-auto max-w-7xl px-6 py-8">
+      <div className="mx-auto max-w-7xl">
 
         {/* HEADER */}
 
-        <header className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <header className="mb-8">
 
-          <div>
-            <h1 className="text-4xl font-black tracking-tight">
-              Spread Wars
-            </h1>
+          <div className="flex flex-wrap items-start justify-between gap-5">
 
-            <p className="mt-1 text-slate-400">
-              Geoff vs. General · College Football · Spread Only
-            </p>
-          </div>
+            <div>
 
-          <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-4xl font-black tracking-tight sm:text-5xl">
+                Spread Wars
+              </h1>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-900 px-4 py-3">
-              <div className="text-xs uppercase tracking-wide text-slate-500">
-                Signed In
-              </div>
+              <p className="mt-2 text-slate-400">
+                College Football · DraftKings Spreads
+              </p>
 
-              <div className="font-bold text-emerald-400">
-                {loggedInPlayer.name}
-              </div>
+              <p className="mt-1 text-sm font-bold text-cyan-400">
+                {season.year} · Week{' '}
+                {week.week_number}
+              </p>
+
             </div>
 
-            <NotificationButton />
+            <div className="flex flex-wrap items-center gap-2">
 
-            <TestNotificationButton />
+              <div className="rounded-xl border border-slate-800 bg-slate-900 px-4 py-2">
 
-            <a
-              href="/admin"
-              className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-300 hover:bg-slate-800"
-            >
-              Admin
-            </a>
+                <div className="text-xs uppercase text-slate-500">
+                  Signed In
+                </div>
 
-            <form
-              action="/auth/signout"
-              method="post"
-            >
-              <button
-                type="submit"
-                className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-300 hover:bg-slate-800"
+                <div className="font-black text-emerald-400">
+                  {
+                    loggedInPlayer.name
+                  }
+                </div>
+
+              </div>
+
+              <NotificationButton />
+
+              <a
+                href="/admin"
+                className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold hover:bg-slate-800"
               >
-                Sign Out
-              </button>
-            </form>
+                Admin
+              </a>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-900 px-5 py-3">
-
-              <div className="text-xs uppercase tracking-wide text-slate-500">
-                Season
-              </div>
-
-              <div className="text-xl font-bold">
-                {season?.year ?? '—'}
-
-                <span className="mx-2 text-slate-600">
-                  ·
-                </span>
-
-                Week {week.week_number}
-              </div>
+              <form
+                action="/auth/signout"
+                method="post"
+              >
+                <button
+                  type="submit"
+                  className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold hover:bg-slate-800"
+                >
+                  Sign Out
+                </button>
+              </form>
 
             </div>
 
@@ -558,287 +753,287 @@ export default async function Home() {
 
         {/* WEEK WINDOW WARNING */}
 
-        {(!week.starts_at ||
-          !week.ends_at) && (
-          <div className="mb-6 rounded-xl border border-amber-700 bg-amber-950/30 p-4 text-sm text-amber-300">
-            This week does not yet have a complete game window configured.
+        {(
+          !week.starts_at ||
+          !week.ends_at
+        ) && (
+          <div className="mb-6 rounded-2xl border border-amber-800 bg-amber-950/40 p-4 text-sm text-amber-200">
+            This week does not have a complete game window configured. Set the week start and end times in Admin.
           </div>
         )}
 
-        {/* TURN MESSAGE */}
+        {/* RECORD CARDS */}
 
-        <div
-          className={`mb-8 rounded-2xl border p-5 ${
-            isMyTurn
-              ? 'border-emerald-500/50 bg-emerald-950/30'
-              : 'border-slate-800 bg-slate-900'
-          }`}
-        >
-          {isMyTurn ? (
-            <>
-              <div className="text-sm font-bold uppercase tracking-wide text-emerald-400">
-                Your Turn
-              </div>
+        <section className="mb-6 grid gap-4 sm:grid-cols-2">
 
-              <div className="mt-1 text-2xl font-black">
-                Pick #{nextPickNumber}
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="text-sm font-bold uppercase tracking-wide text-slate-500">
-                Waiting
-              </div>
-
-              <div className="mt-1 text-xl font-bold">
-                {currentPlayer?.name ?? '—'} is on the clock
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* WEEKLY SCOREBOARD */}
-
-        <div className="mb-8 grid gap-4 md:grid-cols-2">
-
-          {players.map(
-            (player) => {
-              const record =
-                getRecordForPlayer(
+          {playerRecords.map(
+            ({
+              player,
+              record,
+            }) => (
+              <div
+                key={
                   player.id
-                )
+                }
+                className={`rounded-2xl border p-5 ${
+                  currentTurnPlayerId ===
+                  player.id
+                    ? 'border-cyan-500 bg-cyan-950/30'
+                    : 'border-slate-800 bg-slate-900'
+                }`}
+              >
 
-              return (
-                <div
-                  key={
-                    player.id
-                  }
-                  className={`rounded-2xl border p-5 ${
-                    currentPlayer?.id ===
-                    player.id
-                      ? 'border-emerald-500/50 bg-emerald-950/20'
-                      : 'border-slate-800 bg-slate-900'
-                  }`}
-                >
+                <div className="flex items-start justify-between gap-4">
 
-                  <div className="flex items-center justify-between">
+                  <div>
 
-                    <div>
-
-                      <div className="text-xs uppercase tracking-wide text-slate-500">
-                        {
-                          player.automatic_team
-                        }
-                      </div>
-
-                      <div className="mt-1 text-2xl font-black">
-                        {
-                          player.name
-                        }
-                      </div>
-
+                    <div className="text-2xl font-black">
+                      {
+                        player.name
+                      }
                     </div>
 
-                    {currentPlayer?.id ===
-                      player.id && (
-                      <div className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-400">
-                        ON THE CLOCK
-                      </div>
-                    )}
+                    <div className="mt-1 text-sm text-slate-400">
+                      Auto:{' '}
+                      {
+                        player.automatic_team
+                      }
+                    </div>
 
                   </div>
 
-                  <div className="mt-4 text-sm text-slate-500">
-                    Weekly Record
-                  </div>
-
-                  <div className="text-3xl font-black">
-
-                    {record.wins}–
-                    {record.losses}
-
-                    {record.pushes >
-                    0
-                      ? `–${record.pushes}`
-                      : ''}
-
-                  </div>
+                  {currentTurnPlayerId ===
+                    player.id && (
+                    <div className="rounded-full bg-cyan-500 px-3 py-1 text-xs font-black uppercase text-slate-950">
+                      On the clock
+                    </div>
+                  )}
 
                 </div>
-              )
-            }
+
+                <div className="mt-5 text-3xl font-black">
+                  {
+                    record.wins
+                  }
+                  -
+                  {
+                    record.losses
+                  }
+                  -
+                  {
+                    record.pushes
+                  }
+                </div>
+
+                <div className="mt-1 text-xs uppercase tracking-wide text-slate-500">
+                  W-L-P
+                </div>
+
+              </div>
+            )
           )}
 
-        </div>
+        </section>
 
         {/* MAIN GRID */}
 
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
 
-          <DraftBoard
-            players={
-              players
-            }
+          {/* DRAFT BOARD */}
 
-            games={
-              gamesWithOdds
-            }
+          <section>
 
-            loggedInPlayerId={
-              loggedInPlayer.id
-            }
+            <div className="mb-4">
 
-            picks={
-              (picks ?? []).map(
-                (pick) => ({
-                  ...pick,
+              <h2 className="text-2xl font-black">
+                Draft Board
+              </h2>
 
-                  spread:
-                    Number(
-                      pick.spread
-                    ),
-                })
-              )
-            }
+              <p className="mt-1 text-sm text-slate-400">
+                {currentTurnPlayer
+                  ? `${currentTurnPlayer.name}'s turn`
+                  : 'Current turn unavailable'}
+              </p>
 
-            weekId={
-              week.id
-            }
+            </div>
 
-            firstPickerId={
-              week.first_picker_id
-            }
-          />
+            <DraftBoard
+              players={
+                players
+              }
+              games={
+                draftGames
+              }
+              picks={
+                picks
+              }
+              weekId={
+                week.id
+              }
+              firstPickerId={
+                week.first_picker_id
+              }
+              loggedInPlayerId={
+                loggedInPlayer.id
+              }
+            />
+
+          </section>
+
+          {/* SIDEBAR */}
 
           <aside className="space-y-6">
 
             {/* AUTOMATIC PICKS */}
 
-            <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+            <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
 
-              <h2 className="mb-5 text-xl font-bold">
+              <h2 className="text-xl font-black">
                 Automatic Picks
               </h2>
 
-              <div className="space-y-3">
+              <p className="mt-2 text-sm text-slate-400">
+                Picks #1 and #2. Lines lock exactly one hour before kickoff.
+              </p>
 
-                {(picks ?? [])
-                  .filter(
-                    (pick) =>
-                      pick.is_automatic
-                  )
-                  .sort(
-                    (a, b) =>
-                      a.pick_number -
-                      b.pick_number
-                  )
-                  .map(
-                    (pick) => {
-                      const player =
-                        players.find(
-                          (p) =>
-                            p.id ===
-                            pick.player_id
-                        )
+              <div className="mt-5 space-y-4">
 
-                      return (
-                        <div
-                          key={
-                            pick.id
-                          }
-                          className="rounded-xl bg-slate-800 p-4"
-                        >
-
-                          <div className="flex items-center justify-between">
-
-                            <div>
-
-                              <div className="font-bold">
-                                {
-                                  player?.name
-                                }
-                              </div>
-
-                              <div className="text-sm text-slate-400">
-                                {
-                                  pick.team
-                                }
-                              </div>
-
-                            </div>
-
-                            <div className="text-right">
-
-                              <div className="text-xs text-slate-500">
-                                AUTO
-                              </div>
-
-                              <div className="text-xl font-black text-cyan-300">
-
-                                {Number(
-                                  pick.spread
-                                ) > 0
-                                  ? `+${pick.spread}`
-                                  : pick.spread}
-
-                              </div>
-
-                            </div>
-
-                          </div>
-
-                        </div>
+                {players.map(
+                  (player) => {
+                    const pick =
+                      automaticPickForPlayer(
+                        player.id
                       )
-                    }
-                  )}
+
+                    return (
+                      <div
+                        key={
+                          player.id
+                        }
+                        className="rounded-xl bg-slate-800 p-4"
+                      >
+
+                        <div className="text-sm text-slate-400">
+                          {
+                            player.name
+                          }
+                        </div>
+
+                        <div className="mt-1 font-black">
+                          {pick
+                            ? pick.team
+                            : player.automatic_team}
+                        </div>
+
+                        {pick ? (
+                          <>
+                            <div className="mt-1 text-lg font-black text-cyan-400">
+                              {formatSpread(
+                                Number(
+                                  pick.spread
+                                )
+                              )}
+                            </div>
+
+                            <div className="mt-2 text-xs font-bold uppercase">
+
+                              {pick.line_locked ? (
+                                <span className="text-emerald-400">
+                                  Locked
+                                </span>
+                              ) : (
+                                <span className="text-amber-400">
+                                  Current line
+                                </span>
+                              )}
+
+                            </div>
+                          </>
+                        ) : (
+                          <div className="mt-2 text-sm text-slate-500">
+                            Waiting for DraftKings line
+                          </div>
+                        )}
+
+                      </div>
+                    )
+                  }
+                )}
 
               </div>
 
             </section>
 
-            {/* DRAFT STATUS */}
+            {/* WEEK STATUS */}
 
-            <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+            <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
 
-              <h2 className="mb-5 text-xl font-bold">
-                Draft Status
+              <h2 className="text-xl font-black">
+                Week Status
               </h2>
 
-              <div className="space-y-3">
+              <div className="mt-4 space-y-3 text-sm">
 
-                <div className="flex justify-between">
-                  <span className="text-slate-500">
-                    Next Pick
-                  </span>
+                <div className="flex justify-between gap-4">
 
-                  <strong>
-                    #{nextPickNumber}
-                  </strong>
-                </div>
-
-                <div className="flex justify-between">
-                  <span className="text-slate-500">
-                    On the Clock
+                  <span className="text-slate-400">
+                    Week
                   </span>
 
                   <strong>
                     {
-                      currentPlayer?.name ??
+                      week.week_number
+                    }
+                  </strong>
+
+                </div>
+
+                <div className="flex justify-between gap-4">
+
+                  <span className="text-slate-400">
+                    First normal pick
+                  </span>
+
+                  <strong>
+                    {
+                      players.find(
+                        (player) =>
+                          player.id ===
+                          week.first_picker_id
+                      )?.name ??
                       '—'
                     }
                   </strong>
+
                 </div>
 
-                <div className="flex justify-between">
-                  <span className="text-slate-500">
-                    Available Games
+                <div className="flex justify-between gap-4">
+
+                  <span className="text-slate-400">
+                    Normal picks
                   </span>
 
                   <strong>
                     {
-                      gamesWithOdds.length
+                      normalPicks.length
                     }
                   </strong>
+
+                </div>
+
+                <div className="flex justify-between gap-4">
+
+                  <span className="text-slate-400">
+                    Current turn
+                  </span>
+
+                  <strong className="text-cyan-400">
+                    {
+                      currentTurnPlayer?.name ??
+                      '—'
+                    }
+                  </strong>
+
                 </div>
 
               </div>
@@ -847,160 +1042,120 @@ export default async function Home() {
 
             {/* APPROVED ADJUSTMENTS */}
 
-            <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+            {adjustments.length >
+              0 && (
+              <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
 
-              <h2 className="mb-5 text-xl font-bold">
-                Approved Adjustments
-              </h2>
+                <h2 className="text-xl font-black">
+                  Approved Adjustments
+                </h2>
 
-              {(adjustments ?? [])
-                .length === 0 ? (
-                <div className="text-sm text-slate-500">
-                  No approved record adjustments this week.
-                </div>
-              ) : (
-                <div className="space-y-3">
+                <div className="mt-4 space-y-3">
 
-                  {(adjustments ?? []).map(
+                  {adjustments.map(
                     (
-                      adjustment
-                    ) => {
-                      const player =
-                        players.find(
-                          (p) =>
-                            p.id ===
-                            adjustment.target_player_id
-                        )
+                      adjustment,
+                      index
+                    ) => (
+                      <div
+                        key={
+                          `${adjustment.target_player_id}-${index}`
+                        }
+                        className="rounded-xl bg-slate-800 p-3 text-sm"
+                      >
 
-                      return (
-                        <div
-                          key={
-                            adjustment.id
+                        <div className="font-bold">
+                          {
+                            players.find(
+                              (player) =>
+                                player.id ===
+                                adjustment.target_player_id
+                            )?.name ??
+                            'Unknown'
                           }
-                          className="rounded-xl bg-slate-800 p-4"
-                        >
+                        </div>
 
-                          <div className="font-bold">
-                            {
-                              player?.name
-                            }
-                          </div>
+                        <div className="mt-1 text-slate-400">
 
-                          <div className="mt-2 text-sm text-slate-400">
-                            Wins{' '}
-                            {Number(
-                              adjustment.wins_delta
-                            ) >= 0
-                              ? '+'
-                              : ''}
-                            {
-                              adjustment.wins_delta
-                            }
+                          W{' '}
+                          {adjustment.wins_delta >=
+                          0
+                            ? '+'
+                            : ''}
+                          {
+                            adjustment.wins_delta
+                          }
 
-                            {' · '}
+                          {' · '}
 
-                            Losses{' '}
-                            {Number(
-                              adjustment.losses_delta
-                            ) >= 0
-                              ? '+'
-                              : ''}
-                            {
-                              adjustment.losses_delta
-                            }
+                          L{' '}
+                          {adjustment.losses_delta >=
+                          0
+                            ? '+'
+                            : ''}
+                          {
+                            adjustment.losses_delta
+                          }
 
-                            {' · '}
+                          {' · '}
 
-                            Pushes{' '}
-                            {Number(
-                              adjustment.pushes_delta
-                            ) >= 0
-                              ? '+'
-                              : ''}
-                            {
-                              adjustment.pushes_delta
-                            }
-                          </div>
+                          P{' '}
+                          {adjustment.pushes_delta >=
+                          0
+                            ? '+'
+                            : ''}
+                          {
+                            adjustment.pushes_delta
+                          }
 
                         </div>
-                      )
-                    }
+
+                      </div>
+                    )
                   )}
 
                 </div>
-              )}
 
-            </section>
+              </section>
+            )}
 
             {/* RULES */}
 
-            <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+            <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
 
-              <h2 className="mb-5 text-xl font-bold">
+              <h2 className="text-xl font-black">
                 Rules
               </h2>
 
-              <div className="space-y-3 text-sm">
+              <div className="mt-4 space-y-3 text-sm text-slate-400">
 
-                <div className="flex justify-between">
-                  <span className="text-slate-500">
-                    Sport
-                  </span>
+                <p>
+                  Geoff automatically receives Penn State.
+                </p>
 
-                  <strong>
-                    College Football
-                  </strong>
-                </div>
+                <p>
+                  General automatically receives Miami.
+                </p>
 
-                <div className="flex justify-between">
-                  <span className="text-slate-500">
-                    Market
-                  </span>
+                <p>
+                  Automatic picks are Picks #1 and #2.
+                </p>
 
-                  <strong>
-                    Spread Only
-                  </strong>
-                </div>
+                <p>
+                  Normal drafting starts with Pick #3.
+                </p>
 
-                <div className="flex justify-between">
-                  <span className="text-slate-500">
-                    Sportsbook
-                  </span>
+                <p>
+                  Selecting either side removes the entire game from the draft.
+                </p>
 
-                  <strong>
-                    DraftKings
-                  </strong>
-                </div>
+                <p>
+                  Normal picks lock immediately when selected.
+                </p>
 
-                <div className="flex justify-between">
-                  <span className="text-slate-500">
-                    Pick #1
-                  </span>
-
-                  <strong>
-                    Geoff · Penn State
-                  </strong>
-                </div>
-
-                <div className="flex justify-between">
-                  <span className="text-slate-500">
-                    Pick #2
-                  </span>
-
-                  <strong>
-                    General · Miami
-                  </strong>
-                </div>
-
-                <div className="border-t border-slate-800 pt-3">
-                  <div className="text-slate-500">
-                    Automatic Line
-                  </div>
-
-                  <div className="mt-1">
-                    Penn State and Miami lock one hour before kickoff.
-                  </div>
-                </div>
+                <p>
+                  Automatic lines lock exactly one hour before kickoff.
+                </p>
 
               </div>
 
