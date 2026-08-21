@@ -1,6 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import {
+  useEffect,
+  useState,
+} from 'react'
 
 type Player = {
   id: string
@@ -61,17 +64,148 @@ export default function DraftBoard({
     useState(false)
 
   // --------------------------------------------------
+  // KEEP LOCAL PICKS IN SYNC WITH SERVER PROPS
+  // --------------------------------------------------
+
+  useEffect(() => {
+    setCurrentPicks(picks)
+  }, [picks])
+
+  // --------------------------------------------------
+  // AUTOMATIC PHONE REFRESH
+  //
+  // Every 5 seconds:
+  // ask the server how many picks exist.
+  //
+  // If the number changed, reload the page.
+  //
+  // Also checks immediately when the user comes
+  // back into Spread Wars or taps a notification.
+  // --------------------------------------------------
+
+  useEffect(() => {
+    let checking = false
+
+    async function checkForNewPick() {
+      if (
+        checking ||
+        document.visibilityState !==
+          'visible'
+      ) {
+        return
+      }
+
+      checking = true
+
+      try {
+        const response =
+          await fetch(
+            '/api/draft-state',
+            {
+              cache: 'no-store',
+            }
+          )
+
+        if (!response.ok) {
+          return
+        }
+
+        const responseText =
+          await response.text()
+
+        let data: any
+
+        try {
+          data =
+            JSON.parse(
+              responseText
+            )
+        } catch {
+          console.error(
+            'Draft-state route returned a non-JSON response.'
+          )
+
+          return
+        }
+
+        if (
+          data.success &&
+          data.weekId ===
+            weekId &&
+          data.pickCount !==
+            currentPicks.length
+        ) {
+          window.location.reload()
+        }
+      } catch (error) {
+        console.error(
+          'Draft refresh check failed:',
+          error
+        )
+      } finally {
+        checking = false
+      }
+    }
+
+    const interval =
+      window.setInterval(
+        checkForNewPick,
+        5000
+      )
+
+    function handleReturnToApp() {
+      if (
+        document.visibilityState ===
+        'visible'
+      ) {
+        checkForNewPick()
+      }
+    }
+
+    document.addEventListener(
+      'visibilitychange',
+      handleReturnToApp
+    )
+
+    window.addEventListener(
+      'focus',
+      handleReturnToApp
+    )
+
+    return () => {
+      window.clearInterval(
+        interval
+      )
+
+      document.removeEventListener(
+        'visibilitychange',
+        handleReturnToApp
+      )
+
+      window.removeEventListener(
+        'focus',
+        handleReturnToApp
+      )
+    }
+  }, [
+    weekId,
+    currentPicks.length,
+  ])
+
+  // --------------------------------------------------
   // AUTOMATIC + NORMAL PICKS
   // --------------------------------------------------
 
   const automaticPicks =
     currentPicks.filter(
-      (pick) => pick.is_automatic
+      (pick) =>
+        pick.is_automatic
     )
 
   const normalPicks =
     currentPicks.filter(
-      (pick) => !pick.is_automatic
+      (pick) =>
+        !pick.is_automatic
     )
 
   // --------------------------------------------------
@@ -81,13 +215,15 @@ export default function DraftBoard({
   const firstPicker =
     players.find(
       (player) =>
-        player.id === firstPickerId
+        player.id ===
+        firstPickerId
     )
 
   const secondPicker =
     players.find(
       (player) =>
-        player.id !== firstPickerId
+        player.id !==
+        firstPickerId
     )
 
   const pickNumber =
@@ -109,14 +245,17 @@ export default function DraftBoard({
   const pickedGameIds =
     new Set(
       currentPicks.map(
-        (pick) => pick.game_id
+        (pick) =>
+          pick.game_id
       )
     )
 
   const availableGames =
     games.filter(
       (game) =>
-        !pickedGameIds.has(game.id)
+        !pickedGameIds.has(
+          game.id
+        )
     )
 
   // --------------------------------------------------
@@ -131,7 +270,8 @@ export default function DraftBoard({
       game.odds
         .filter(
           (odd) =>
-            odd.team === team
+            odd.team ===
+            team
         )
         .sort(
           (a, b) =>
@@ -143,7 +283,10 @@ export default function DraftBoard({
             ).getTime()
         )
 
-    return teamOdds[0] ?? null
+    return (
+      teamOdds[0] ??
+      null
+    )
   }
 
   // --------------------------------------------------
@@ -185,7 +328,10 @@ export default function DraftBoard({
     }
 
     const odds =
-      getSpread(game, team)
+      getSpread(
+        game,
+        team
+      )
 
     if (!odds) {
       setMessage(
@@ -203,26 +349,44 @@ export default function DraftBoard({
         await fetch(
           '/api/picks',
           {
-            method: 'POST',
+            method:
+              'POST',
 
             headers: {
               'Content-Type':
                 'application/json',
             },
 
-            body: JSON.stringify({
-              weekId,
-              playerId:
-                loggedInPlayerId,
-              gameId:
-                game.id,
-              team,
-            }),
+            body:
+              JSON.stringify({
+                weekId,
+
+                playerId:
+                  loggedInPlayerId,
+
+                gameId:
+                  game.id,
+
+                team,
+              }),
           }
         )
 
-      const data =
-        await response.json()
+      const responseText =
+        await response.text()
+
+      let data: any
+
+      try {
+        data =
+          JSON.parse(
+            responseText
+          )
+      } catch {
+        throw new Error(
+          `Unexpected server response (${response.status}).`
+        )
+      }
 
       if (
         !response.ok ||
@@ -236,14 +400,18 @@ export default function DraftBoard({
         return
       }
 
+      // Add the pick immediately to this phone.
       setCurrentPicks(
         (previous) => [
           ...previous,
           {
             ...data.pick,
-            spread: Number(
-              data.pick.spread
-            ),
+
+            spread:
+              Number(
+                data.pick
+                  .spread
+              ),
           },
         ]
       )
@@ -252,9 +420,20 @@ export default function DraftBoard({
         data.message ??
           'Pick saved.'
       )
-    } catch {
+
+      // Reload this phone after a successful pick,
+      // so all sidebar/header information updates too.
+      window.setTimeout(
+        () => {
+          window.location.reload()
+        },
+        500
+      )
+    } catch (error) {
       setMessage(
-        'Something went wrong while making the pick.'
+        error instanceof Error
+          ? error.message
+          : 'Something went wrong while making the pick.'
       )
     } finally {
       setSubmitting(false)
@@ -277,14 +456,16 @@ export default function DraftBoard({
             : 'border-slate-800 bg-slate-900'
         }`}
       >
-        {availableGames.length === 0 ? (
+        {availableGames.length ===
+        0 ? (
           <>
             <div className="text-sm font-bold uppercase tracking-wide text-slate-500">
               Draft Complete
             </div>
 
             <div className="mt-1 text-2xl font-black">
-              No games remain available.
+              No games remain
+              available.
             </div>
           </>
         ) : isMyTurn ? (
@@ -294,7 +475,9 @@ export default function DraftBoard({
             </div>
 
             <div className="mt-1 text-3xl font-black">
-              {currentPlayer?.name}
+              {
+                currentPlayer?.name
+              }
             </div>
 
             <div className="mt-1 text-slate-400">
@@ -308,11 +491,16 @@ export default function DraftBoard({
             </div>
 
             <div className="mt-1 text-2xl font-black">
-              {currentPlayer?.name} is on the clock
+              {
+                currentPlayer?.name
+              }{' '}
+              is on the clock
             </div>
 
             <div className="mt-2 text-sm text-slate-400">
-              You can view the board, but picks are disabled until your turn.
+              The board checks
+              for new picks
+              automatically.
             </div>
           </>
         )}
@@ -341,16 +529,17 @@ export default function DraftBoard({
 
         </div>
 
-        {availableGames.length === 0 ? (
+        {availableGames.length ===
+        0 ? (
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center text-slate-500">
-            No games are currently available.
+            No games are
+            currently available.
           </div>
         ) : (
           <div className="space-y-4">
 
             {availableGames.map(
               (game) => {
-
                 const awayOdds =
                   getSpread(
                     game,
@@ -365,7 +554,9 @@ export default function DraftBoard({
 
                 return (
                   <div
-                    key={game.id}
+                    key={
+                      game.id
+                    }
                     className="rounded-2xl border border-slate-800 bg-slate-900 p-5"
                   >
 
@@ -381,17 +572,20 @@ export default function DraftBoard({
 
                       <button
                         type="button"
+
                         disabled={
                           !isMyTurn ||
                           submitting ||
                           !awayOdds
                         }
+
                         onClick={() =>
                           makePick(
                             game,
                             game.away_team
                           )
                         }
+
                         className={`rounded-xl border p-4 text-left transition ${
                           isMyTurn &&
                           awayOdds &&
@@ -412,11 +606,13 @@ export default function DraftBoard({
                         </div>
 
                         <div className="mt-2 text-2xl font-black text-cyan-300">
+
                           {awayOdds
                             ? formatSpread(
                                 awayOdds.spread
                               )
                             : '—'}
+
                         </div>
 
                       </button>
@@ -425,17 +621,20 @@ export default function DraftBoard({
 
                       <button
                         type="button"
+
                         disabled={
                           !isMyTurn ||
                           submitting ||
                           !homeOdds
                         }
+
                         onClick={() =>
                           makePick(
                             game,
                             game.home_team
                           )
                         }
+
                         className={`rounded-xl border p-4 text-left transition ${
                           isMyTurn &&
                           homeOdds &&
@@ -456,11 +655,13 @@ export default function DraftBoard({
                         </div>
 
                         <div className="mt-2 text-2xl font-black text-cyan-300">
+
                           {homeOdds
                             ? formatSpread(
                                 homeOdds.spread
                               )
                             : '—'}
+
                         </div>
 
                       </button>
@@ -488,127 +689,141 @@ export default function DraftBoard({
 
           {/* AUTOMATIC PICKS */}
 
-          {automaticPicks
+          {[...automaticPicks]
             .sort(
               (a, b) =>
                 a.pick_number -
                 b.pick_number
             )
-            .map((pick) => {
+            .map(
+              (pick) => {
+                const player =
+                  players.find(
+                    (p) =>
+                      p.id ===
+                      pick.player_id
+                  )
 
-              const player =
-                players.find(
-                  (p) =>
-                    p.id ===
-                    pick.player_id
+                return (
+                  <div
+                    key={
+                      pick.id
+                    }
+                    className="flex items-center justify-between rounded-xl bg-slate-800 p-4"
+                  >
+
+                    <div>
+
+                      <div className="flex items-center gap-2">
+
+                        <span className="font-bold">
+                          Pick #
+                          {
+                            pick.pick_number
+                          }
+                        </span>
+
+                        <span className="rounded-full bg-cyan-500/10 px-2 py-1 text-xs font-bold text-cyan-300">
+                          AUTO
+                        </span>
+
+                      </div>
+
+                      <div className="mt-1 text-sm text-slate-400">
+                        {
+                          player?.name
+                        }
+                      </div>
+
+                    </div>
+
+                    <div className="text-right">
+
+                      <div className="font-bold">
+                        {
+                          pick.team
+                        }
+                      </div>
+
+                      <div className="text-cyan-300">
+                        {formatSpread(
+                          Number(
+                            pick.spread
+                          )
+                        )}
+                      </div>
+
+                    </div>
+
+                  </div>
                 )
+              }
+            )}
 
-              return (
-                <div
-                  key={pick.id}
-                  className="flex items-center justify-between rounded-xl bg-slate-800 p-4"
-                >
+          {/* NORMAL PICKS */}
 
-                  <div>
+          {[...normalPicks]
+            .sort(
+              (a, b) =>
+                a.pick_number -
+                b.pick_number
+            )
+            .map(
+              (pick) => {
+                const player =
+                  players.find(
+                    (p) =>
+                      p.id ===
+                      pick.player_id
+                  )
 
-                    <div className="flex items-center gap-2">
+                return (
+                  <div
+                    key={
+                      pick.id
+                    }
+                    className="flex items-center justify-between rounded-xl bg-slate-800 p-4"
+                  >
 
-                      <span className="font-bold">
+                    <div>
+
+                      <div className="font-bold">
                         Pick #
                         {
                           pick.pick_number
                         }
-                      </span>
+                      </div>
 
-                      <span className="rounded-full bg-cyan-500/10 px-2 py-1 text-xs font-bold text-cyan-300">
-                        AUTO
-                      </span>
+                      <div className="mt-1 text-sm text-slate-400">
+                        {
+                          player?.name
+                        }
+                      </div>
 
                     </div>
 
-                    <div className="mt-1 text-sm text-slate-400">
-                      {player?.name}
+                    <div className="text-right">
+
+                      <div className="font-bold">
+                        {
+                          pick.team
+                        }
+                      </div>
+
+                      <div className="text-cyan-300">
+                        {formatSpread(
+                          Number(
+                            pick.spread
+                          )
+                        )}
+                      </div>
+
                     </div>
 
                   </div>
-
-                  <div className="text-right">
-
-                    <div className="font-bold">
-                      {pick.team}
-                    </div>
-
-                    <div className="text-cyan-300">
-                      {formatSpread(
-                        Number(
-                          pick.spread
-                        )
-                      )}
-                    </div>
-
-                  </div>
-
-                </div>
-              )
-            })}
-
-          {/* NORMAL PICKS */}
-
-          {normalPicks
-            .sort(
-              (a, b) =>
-                a.pick_number -
-                b.pick_number
-            )
-            .map((pick) => {
-
-              const player =
-                players.find(
-                  (p) =>
-                    p.id ===
-                    pick.player_id
                 )
-
-              return (
-                <div
-                  key={pick.id}
-                  className="flex items-center justify-between rounded-xl bg-slate-800 p-4"
-                >
-
-                  <div>
-
-                    <div className="font-bold">
-                      Pick #
-                      {
-                        pick.pick_number
-                      }
-                    </div>
-
-                    <div className="mt-1 text-sm text-slate-400">
-                      {player?.name}
-                    </div>
-
-                  </div>
-
-                  <div className="text-right">
-
-                    <div className="font-bold">
-                      {pick.team}
-                    </div>
-
-                    <div className="text-cyan-300">
-                      {formatSpread(
-                        Number(
-                          pick.spread
-                        )
-                      )}
-                    </div>
-
-                  </div>
-
-                </div>
-              )
-            })}
+              }
+            )}
 
         </div>
 
