@@ -14,9 +14,7 @@ function isAuthorized(request: Request) {
   )
 }
 
-function normalizeTeam(
-  value: string
-) {
+function normalizeTeam(value: string) {
   return value
     .trim()
     .toLowerCase()
@@ -34,17 +32,15 @@ function matchesAutomaticTeam(
 
   // Penn State
   if (
-    automatic.includes(
-      'penn state'
-    )
+    automatic.includes('penn state')
   ) {
     return actual.includes(
       'penn state'
     )
   }
 
-  // Miami must mean Miami Hurricanes,
-  // NOT Miami (OH)
+  // Miami means Miami Hurricanes,
+  // never Miami (OH)
   if (automatic === 'miami') {
     return (
       actual === 'miami' ||
@@ -63,6 +59,10 @@ export async function POST(
   request: Request
 ) {
   try {
+    // --------------------------------------------------
+    // AUTHORIZATION
+    // --------------------------------------------------
+
     if (!isAuthorized(request)) {
       return NextResponse.json(
         {
@@ -76,9 +76,9 @@ export async function POST(
     const supabase =
       createAdminClient()
 
-    // -----------------------------------------------
+    // --------------------------------------------------
     // CURRENT ACTIVE WEEK
-    // -----------------------------------------------
+    // --------------------------------------------------
 
     const {
       data: week,
@@ -118,9 +118,9 @@ export async function POST(
       )
     }
 
-    // -----------------------------------------------
+    // --------------------------------------------------
     // PLAYERS
-    // -----------------------------------------------
+    // --------------------------------------------------
 
     const {
       data: players,
@@ -182,15 +182,16 @@ export async function POST(
         player: geoff,
         pickNumber: 1,
       },
+
       {
         player: general,
         pickNumber: 2,
       },
     ]
 
-    // -----------------------------------------------
+    // --------------------------------------------------
     // FUTURE GAMES
-    // -----------------------------------------------
+    // --------------------------------------------------
 
     const {
       data: games,
@@ -220,7 +221,14 @@ export async function POST(
     let created = 0
     let refreshed = 0
     let locked = 0
-    let notFound = 0
+    let alreadyLocked = 0
+    let teamGameNotFound = 0
+    let currentLineNotFound = 0
+    let lockLineNotFound = 0
+
+    // --------------------------------------------------
+    // PROCESS GEOFF + GENERAL
+    // --------------------------------------------------
 
     for (
       const automaticPlayer of
@@ -230,6 +238,10 @@ export async function POST(
         player,
         pickNumber,
       } = automaticPlayer
+
+      // ------------------------------------------------
+      // FIND THIS PLAYER'S AUTO TEAM GAME
+      // ------------------------------------------------
 
       const game =
         (games ?? []).find(
@@ -245,7 +257,7 @@ export async function POST(
         )
 
       if (!game) {
-        notFound++
+        teamGameNotFound++
         continue
       }
 
@@ -257,13 +269,255 @@ export async function POST(
           ? game.home_team
           : game.away_team
 
-      // ---------------------------------------------
-      // LATEST DRAFTKINGS LINE
-      // ---------------------------------------------
+      // ------------------------------------------------
+      // EXACT LOCK TIME
+      //
+      // Official effective lock:
+      // kickoff minus exactly 60 minutes
+      // ------------------------------------------------
+
+      const kickoff =
+        new Date(game.start_time)
+
+      const lockTime =
+        new Date(
+          kickoff.getTime() -
+            60 * 60 * 1000
+        )
+
+      const shouldLock =
+        Date.now() >=
+        lockTime.getTime()
+
+      // ------------------------------------------------
+      // FIND EXISTING AUTO PICK
+      // ------------------------------------------------
 
       const {
-        data: latestOdds,
-        error: oddsError,
+        data: existingPick,
+        error: existingError,
+      } = await supabase
+        .from('picks')
+        .select(`
+          id,
+          game_id,
+          team,
+          spread,
+          locked_spread,
+          line_locked,
+          lock_time
+        `)
+        .eq(
+          'week_id',
+          week.id
+        )
+        .eq(
+          'player_id',
+          player.id
+        )
+        .eq(
+          'is_automatic',
+          true
+        )
+        .maybeSingle()
+
+      if (existingError) {
+        throw new Error(
+          existingError.message
+        )
+      }
+
+      // ------------------------------------------------
+      // IF ALREADY LOCKED, NEVER TOUCH IT AGAIN
+      // ------------------------------------------------
+
+      if (
+        existingPick?.line_locked
+      ) {
+        alreadyLocked++
+        continue
+      }
+
+      // ------------------------------------------------
+      // BEFORE THE LOCK TIME:
+      // GET THE LATEST CURRENT LINE
+      // ------------------------------------------------
+
+      if (!shouldLock) {
+        const {
+          data: currentOdds,
+          error: currentOddsError,
+        } = await supabase
+          .from('odds')
+          .select(`
+            spread,
+            fetched_at
+          `)
+          .eq(
+            'game_id',
+            game.id
+          )
+          .eq(
+            'team',
+            selectedTeam
+          )
+          .eq(
+            'sportsbook',
+            'DraftKings'
+          )
+          .eq(
+            'market',
+            'spreads'
+          )
+          .order(
+            'fetched_at',
+            {
+              ascending: false,
+            }
+          )
+          .limit(1)
+          .maybeSingle()
+
+        if (currentOddsError) {
+          throw new Error(
+            currentOddsError.message
+          )
+        }
+
+        if (!currentOdds) {
+          currentLineNotFound++
+          continue
+        }
+
+        const currentSpread =
+          Number(
+            currentOdds.spread
+          )
+
+        if (
+          Number.isNaN(
+            currentSpread
+          )
+        ) {
+          currentLineNotFound++
+          continue
+        }
+
+        // ----------------------------------------------
+        // UPDATE EXISTING UNLOCKED PICK
+        // ----------------------------------------------
+
+        if (existingPick) {
+          const {
+            error: updateError,
+          } = await supabase
+            .from('picks')
+            .update({
+              game_id:
+                game.id,
+
+              team:
+                selectedTeam,
+
+              spread:
+                currentSpread,
+
+              lock_time:
+                lockTime.toISOString(),
+
+              line_locked:
+                false,
+
+              locked_spread:
+                null,
+            })
+            .eq(
+              'id',
+              existingPick.id
+            )
+
+          if (updateError) {
+            throw new Error(
+              updateError.message
+            )
+          }
+
+          refreshed++
+          continue
+        }
+
+        // ----------------------------------------------
+        // CREATE NEW UNLOCKED AUTO PICK
+        // ----------------------------------------------
+
+        const {
+          error: insertError,
+        } = await supabase
+          .from('picks')
+          .insert({
+            week_id:
+              week.id,
+
+            player_id:
+              player.id,
+
+            game_id:
+              game.id,
+
+            pick_number:
+              pickNumber,
+
+            team:
+              selectedTeam,
+
+            spread:
+              currentSpread,
+
+            sportsbook:
+              'DraftKings',
+
+            is_automatic:
+              true,
+
+            result:
+              'pending',
+
+            lock_time:
+              lockTime.toISOString(),
+
+            locked_spread:
+              null,
+
+            line_locked:
+              false,
+
+            locked_at:
+              null,
+          })
+
+        if (insertError) {
+          throw new Error(
+            insertError.message
+          )
+        }
+
+        created++
+        continue
+      }
+
+      // ------------------------------------------------
+      // AT / AFTER THE LOCK TIME
+      //
+      // IMPORTANT:
+      // Do NOT use a line fetched after the cutoff.
+      //
+      // Find the newest DraftKings snapshot whose
+      // fetched_at is <= the exact lock time.
+      // ------------------------------------------------
+
+      const {
+        data: lockOdds,
+        error: lockOddsError,
       } = await supabase
         .from('odds')
         .select(`
@@ -286,6 +540,10 @@ export async function POST(
           'market',
           'spreads'
         )
+        .lte(
+          'fetched_at',
+          lockTime.toISOString()
+        )
         .order(
           'fetched_at',
           {
@@ -295,146 +553,99 @@ export async function POST(
         .limit(1)
         .maybeSingle()
 
-      if (oddsError) {
+      if (lockOddsError) {
         throw new Error(
-          oddsError.message
+          lockOddsError.message
         )
       }
 
-      if (!latestOdds) {
+      // ------------------------------------------------
+      // SAFETY:
+      // If we have no line from at/before the cutoff,
+      // DO NOT use a later line.
+      // ------------------------------------------------
+
+      if (!lockOdds) {
+        lockLineNotFound++
+
+        console.error(
+          `No DraftKings lock-time line found for ${selectedTeam} at or before ${lockTime.toISOString()}`
+        )
+
         continue
       }
 
-      const currentSpread =
+      const officialSpread =
         Number(
-          latestOdds.spread
+          lockOdds.spread
         )
 
       if (
         Number.isNaN(
-          currentSpread
+          officialSpread
         )
       ) {
+        lockLineNotFound++
         continue
       }
 
-      // Exactly one hour before kickoff
-      const kickoff =
-        new Date(
-          game.start_time
-        )
-
-      const lockTime =
-        new Date(
-          kickoff.getTime() -
-          60 * 60 * 1000
-        )
-
-      const shouldLock =
-        Date.now() >=
-        lockTime.getTime()
-
-      // ---------------------------------------------
-      // EXISTING AUTO PICK?
-      // ---------------------------------------------
-
-      const {
-        data: existingPick,
-        error: existingError,
-      } = await supabase
-        .from('picks')
-        .select(`
-          id,
-          line_locked,
-          locked_spread
-        `)
-        .eq(
-          'week_id',
-          week.id
-        )
-        .eq(
-          'player_id',
-          player.id
-        )
-        .eq(
-          'is_automatic',
-          true
-        )
-        .maybeSingle()
-
-      if (existingError) {
-        throw new Error(
-          existingError.message
-        )
-      }
-
-      // ---------------------------------------------
-      // EXISTING PICK
-      // ---------------------------------------------
+      // ------------------------------------------------
+      // LOCK EXISTING PICK
+      // ------------------------------------------------
 
       if (existingPick) {
-        // Once locked, never change it.
-        if (
-          existingPick.line_locked
-        ) {
-          continue
-        }
-
-        const updateData:
-          Record<string, unknown> =
-          {
-            spread:
-              currentSpread,
-          }
-
-        if (shouldLock) {
-          updateData.locked_spread =
-            currentSpread
-
-          updateData.line_locked =
-            true
-
-          updateData.lock_time =
-            lockTime.toISOString()
-
-          updateData.locked_at =
-            new Date()
-              .toISOString()
-        }
-
         const {
-          error: updateError,
+          error: lockError,
         } = await supabase
           .from('picks')
-          .update(
-            updateData
-          )
+          .update({
+            game_id:
+              game.id,
+
+            team:
+              selectedTeam,
+
+            spread:
+              officialSpread,
+
+            locked_spread:
+              officialSpread,
+
+            line_locked:
+              true,
+
+            // Official lock time is EXACTLY
+            // one hour before kickoff.
+            lock_time:
+              lockTime.toISOString(),
+
+            locked_at:
+              lockTime.toISOString(),
+          })
           .eq(
             'id',
             existingPick.id
           )
 
-        if (updateError) {
+        if (lockError) {
           throw new Error(
-            updateError.message
+            lockError.message
           )
         }
 
-        if (shouldLock) {
-          locked++
-        } else {
-          refreshed++
-        }
-
+        locked++
         continue
       }
 
-      // ---------------------------------------------
-      // CREATE AUTO PICK
-      // ---------------------------------------------
+      // ------------------------------------------------
+      // CREATE PICK ALREADY LOCKED
+      //
+      // This handles the case where automation did
+      // not create the pick until after the cutoff.
+      // ------------------------------------------------
 
       const {
-        error: insertError,
+        error: lockedInsertError,
       } = await supabase
         .from('picks')
         .insert({
@@ -454,7 +665,7 @@ export async function POST(
             selectedTeam,
 
           spread:
-            currentSpread,
+            officialSpread,
 
           sportsbook:
             'DraftKings',
@@ -469,32 +680,28 @@ export async function POST(
             lockTime.toISOString(),
 
           locked_spread:
-            shouldLock
-              ? currentSpread
-              : null,
+            officialSpread,
 
           line_locked:
-            shouldLock,
+            true,
 
           locked_at:
-            shouldLock
-              ? new Date()
-                  .toISOString()
-              : null,
+            lockTime.toISOString(),
         })
 
-      if (insertError) {
+      if (lockedInsertError) {
         throw new Error(
-          insertError.message
+          lockedInsertError.message
         )
       }
 
       created++
-
-      if (shouldLock) {
-        locked++
-      }
+      locked++
     }
+
+    // --------------------------------------------------
+    // RESPONSE
+    // --------------------------------------------------
 
     return NextResponse.json({
       success: true,
@@ -505,7 +712,13 @@ export async function POST(
       created,
       refreshed,
       locked,
-      notFound,
+      alreadyLocked,
+
+      warnings: {
+        teamGameNotFound,
+        currentLineNotFound,
+        lockLineNotFound,
+      },
     })
   } catch (error) {
     console.error(
