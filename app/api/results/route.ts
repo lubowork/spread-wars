@@ -1,144 +1,127 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '../../../lib/supabase-admin'
 
-const SCORES_URL =
-  'https://api.the-odds-api.com/v4/sports/americanfootball_ncaaf/scores'
-
-type ApiScore = {
-  name: string
-  score: string
-}
-
-type ApiGame = {
-  id: string
-  completed: boolean
-  home_team: string
-  away_team: string
-  scores: ApiScore[] | null
-}
-
-function gradePick(
-  pickedTeam: string,
-  spread: number,
-  homeTeam: string,
-  awayTeam: string,
-  homeScore: number,
-  awayScore: number
+function isAuthorized(
+  request: Request
 ) {
-  let teamScore: number
-  let opponentScore: number
-
-  if (pickedTeam === homeTeam) {
-    teamScore = homeScore
-    opponentScore = awayScore
-  } else if (pickedTeam === awayTeam) {
-    teamScore = awayScore
-    opponentScore = homeScore
-  } else {
-    throw new Error(
-      `Picked team ${pickedTeam} does not match game teams.`
+  const authHeader =
+    request.headers.get(
+      'authorization'
     )
-  }
 
-  const adjustedMargin =
-    teamScore - opponentScore + spread
+  const expected =
+    `Bearer ${process.env.CRON_SECRET}`
 
-  if (adjustedMargin > 0) {
-    return 'win'
-  }
-
-  if (adjustedMargin < 0) {
-    return 'loss'
-  }
-
-  return 'push'
+  return (
+    !!process.env.CRON_SECRET &&
+    authHeader === expected
+  )
 }
 
-export async function GET() {
+export async function POST(
+  request: Request
+) {
   try {
-    const apiKey = process.env.ODDS_API_KEY
+    if (!isAuthorized(request)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Unauthorized',
+        },
+        { status: 401 }
+      )
+    }
+
+    const apiKey =
+      process.env.ODDS_API_KEY
 
     if (!apiKey) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'ODDS_API_KEY is not configured.',
-        },
-        { status: 500 }
+      throw new Error(
+        'ODDS_API_KEY is missing.'
       )
     }
-
-    const url = new URL(SCORES_URL)
-
-    url.searchParams.set('apiKey', apiKey)
-    url.searchParams.set('daysFrom', '3')
-    url.searchParams.set('dateFormat', 'iso')
-
-    const response = await fetch(
-      url.toString(),
-      {
-        cache: 'no-store',
-      }
-    )
-
-    if (!response.ok) {
-      const body = await response.text()
-
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            `Scores API returned ${response.status}: ${body}`,
-        },
-        { status: 500 }
-      )
-    }
-
-    const apiGames: ApiGame[] =
-      await response.json()
 
     const supabase =
       createAdminClient()
 
+    const url =
+      new URL(
+        'https://api.the-odds-api.com/v4/sports/americanfootball_ncaaf/scores'
+      )
+
+    url.searchParams.set(
+      'apiKey',
+      apiKey
+    )
+
+    url.searchParams.set(
+      'daysFrom',
+      '3'
+    )
+
+    url.searchParams.set(
+      'dateFormat',
+      'iso'
+    )
+
+    const response =
+      await fetch(
+        url.toString(),
+        {
+          cache: 'no-store',
+        }
+      )
+
+    if (!response.ok) {
+      throw new Error(
+        `Scores API returned ${response.status}`
+      )
+    }
+
+    const scores =
+      await response.json()
+
     let gamesUpdated = 0
     let picksGraded = 0
+    let skippedUnlocked = 0
 
-    const results = []
-
-    for (const apiGame of apiGames) {
-      if (
-        !apiGame.completed ||
-        !apiGame.scores
-      ) {
+    for (
+      const scoreGame of scores
+    ) {
+      if (!scoreGame.completed) {
         continue
       }
 
-      const homeScoreEntry =
-        apiGame.scores.find(
-          (score) =>
+      const homeScoreItem =
+        scoreGame.scores?.find(
+          (score: any) =>
             score.name ===
-            apiGame.home_team
+            scoreGame.home_team
         )
 
-      const awayScoreEntry =
-        apiGame.scores.find(
-          (score) =>
+      const awayScoreItem =
+        scoreGame.scores?.find(
+          (score: any) =>
             score.name ===
-            apiGame.away_team
+            scoreGame.away_team
         )
 
       if (
-        !homeScoreEntry ||
-        !awayScoreEntry
+        !homeScoreItem ||
+        !awayScoreItem
       ) {
         continue
       }
 
       const homeScore =
-        Number(homeScoreEntry.score)
+        Number(
+          homeScoreItem.score
+        )
 
       const awayScore =
-        Number(awayScoreEntry.score)
+        Number(
+          awayScoreItem.score
+        )
 
       if (
         Number.isNaN(homeScore) ||
@@ -147,26 +130,23 @@ export async function GET() {
         continue
       }
 
-      // --------------------------------------
-      // Find our stored game
-      // --------------------------------------
+      // ---------------------------------------------
+      // FIND OUR GAME
+      // ---------------------------------------------
 
       const {
         data: storedGame,
         error: gameError,
       } = await supabase
         .from('games')
-        .select(
-          `
+        .select(`
           id,
-          external_game_id,
           home_team,
           away_team
-          `
-        )
+        `)
         .eq(
           'external_game_id',
-          apiGame.id
+          scoreGame.id
         )
         .maybeSingle()
 
@@ -180,18 +160,23 @@ export async function GET() {
         continue
       }
 
-      // --------------------------------------
-      // Update final score
-      // --------------------------------------
+      // ---------------------------------------------
+      // UPDATE FINAL SCORE
+      // ---------------------------------------------
 
       const {
         error: updateGameError,
       } = await supabase
         .from('games')
         .update({
-          completed: true,
-          home_score: homeScore,
-          away_score: awayScore,
+          completed:
+            true,
+
+          home_score:
+            homeScore,
+
+          away_score:
+            awayScore,
         })
         .eq(
           'id',
@@ -206,29 +191,31 @@ export async function GET() {
 
       gamesUpdated++
 
-      // --------------------------------------
-      // Get picks for this game
-      // --------------------------------------
+      // ---------------------------------------------
+      // GET PENDING PICKS
+      // ---------------------------------------------
 
       const {
         data: picks,
         error: picksError,
       } = await supabase
         .from('picks')
-        .select(
-          `
+        .select(`
           id,
-          player_id,
           team,
           spread,
           locked_spread,
           line_locked,
+          is_automatic,
           result
-          `
-        )
+        `)
         .eq(
           'game_id',
           storedGame.id
+        )
+        .eq(
+          'result',
+          'pending'
         )
 
       if (picksError) {
@@ -237,15 +224,23 @@ export async function GET() {
         )
       }
 
-      for (const pick of picks ?? []) {
-        if (pick.result !== 'pending') {
+      for (
+        const pick of
+        picks ?? []
+      ) {
+        // Automatic picks MUST have
+        // their one-hour line locked.
+        if (
+          pick.is_automatic &&
+          !pick.line_locked
+        ) {
+          skippedUnlocked++
           continue
         }
 
-        // Use locked spread when available.
-        // Normal draft picks should already be locked.
         const officialSpread =
-          pick.locked_spread !== null
+          pick.locked_spread !==
+          null
             ? Number(
                 pick.locked_spread
               )
@@ -253,18 +248,64 @@ export async function GET() {
                 pick.spread
               )
 
-        const result =
-          gradePick(
-            pick.team,
-            officialSpread,
-            storedGame.home_team,
-            storedGame.away_team,
-            homeScore,
-            awayScore
+        if (
+          Number.isNaN(
+            officialSpread
           )
+        ) {
+          continue
+        }
+
+        let teamScore: number
+        let opponentScore: number
+
+        if (
+          pick.team ===
+          storedGame.home_team
+        ) {
+          teamScore =
+            homeScore
+
+          opponentScore =
+            awayScore
+        } else if (
+          pick.team ===
+          storedGame.away_team
+        ) {
+          teamScore =
+            awayScore
+
+          opponentScore =
+            homeScore
+        } else {
+          continue
+        }
+
+        const adjustedMargin =
+          teamScore -
+          opponentScore +
+          officialSpread
+
+        let result:
+          'win' |
+          'loss' |
+          'push'
+
+        if (
+          adjustedMargin > 0
+        ) {
+          result = 'win'
+        } else if (
+          adjustedMargin < 0
+        ) {
+          result = 'loss'
+        } else {
+          result = 'push'
+        }
 
         const {
-          error: updatePickError,
+          error:
+            resultUpdateError,
         } = await supabase
           .from('picks')
           .update({
@@ -275,46 +316,38 @@ export async function GET() {
             pick.id
           )
 
-        if (updatePickError) {
+        if (
+          resultUpdateError
+        ) {
           throw new Error(
-            updatePickError.message
+            resultUpdateError.message
           )
         }
 
         picksGraded++
-
-        results.push({
-          team: pick.team,
-          spread:
-            officialSpread,
-          final:
-            `${awayScore}-${homeScore}`,
-          result,
-        })
       }
     }
 
     return NextResponse.json({
       success: true,
-      gamesReturned:
-        apiGames.length,
       gamesUpdated,
       picksGraded,
-      results,
+      skippedUnlocked,
     })
   } catch (error) {
     console.error(
-      'Results sync error:',
+      'POST /api/results error:',
       error
     )
 
     return NextResponse.json(
       {
         success: false,
+
         error:
           error instanceof Error
             ? error.message
-            : 'Unknown error',
+            : 'Unknown result sync error.',
       },
       { status: 500 }
     )
