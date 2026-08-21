@@ -78,6 +78,9 @@ export async function POST(
 
     // --------------------------------------------------
     // CURRENT ACTIVE WEEK
+    //
+    // This now includes starts_at / ends_at so automatic
+    // picks only look inside the active week's game window.
     // --------------------------------------------------
 
     const {
@@ -89,11 +92,16 @@ export async function POST(
         id,
         week_number,
         season_id,
-        status
+        status,
+        starts_at,
+        ends_at
       `)
-      .eq('status', 'active')
+      .eq(
+        'status',
+        'active'
+      )
       .order(
-        'week_number',
+        'created_at',
         {
           ascending: false,
         }
@@ -182,7 +190,6 @@ export async function POST(
         player: geoff,
         pickNumber: 1,
       },
-
       {
         player: general,
         pickNumber: 2,
@@ -190,27 +197,62 @@ export async function POST(
     ]
 
     // --------------------------------------------------
-    // FUTURE GAMES
+    // GAMES FOR ACTIVE WEEK
+    //
+    // If starts_at exists:
+    //   start_time >= starts_at
+    //
+    // If ends_at exists:
+    //   start_time < ends_at
+    //
+    // If starts_at is blank:
+    //   fall back to future games only.
     // --------------------------------------------------
+
+    let gamesQuery =
+      supabase
+        .from('games')
+        .select(`
+          id,
+          home_team,
+          away_team,
+          start_time,
+          completed
+        `)
+        .eq(
+          'completed',
+          false
+        )
+
+    if (week.starts_at) {
+      gamesQuery =
+        gamesQuery.gte(
+          'start_time',
+          week.starts_at
+        )
+    } else {
+      gamesQuery =
+        gamesQuery.gte(
+          'start_time',
+          new Date().toISOString()
+        )
+    }
+
+    if (week.ends_at) {
+      gamesQuery =
+        gamesQuery.lt(
+          'start_time',
+          week.ends_at
+        )
+    }
 
     const {
       data: games,
       error: gamesError,
-    } = await supabase
-      .from('games')
-      .select(`
-        id,
-        home_team,
-        away_team,
-        start_time,
-        completed
-      `)
-      .eq('completed', false)
-      .gte(
-        'start_time',
-        new Date().toISOString()
+    } =
+      await gamesQuery.order(
+        'start_time'
       )
-      .order('start_time')
 
     if (gamesError) {
       throw new Error(
@@ -272,12 +314,13 @@ export async function POST(
       // ------------------------------------------------
       // EXACT LOCK TIME
       //
-      // Official effective lock:
-      // kickoff minus exactly 60 minutes
+      // Kickoff minus exactly 60 minutes.
       // ------------------------------------------------
 
       const kickoff =
-        new Date(game.start_time)
+        new Date(
+          game.start_time
+        )
 
       const lockTime =
         new Date(
@@ -339,8 +382,8 @@ export async function POST(
       }
 
       // ------------------------------------------------
-      // BEFORE THE LOCK TIME:
-      // GET THE LATEST CURRENT LINE
+      // BEFORE LOCK:
+      // USE LATEST CURRENT DRAFTKINGS LINE
       // ------------------------------------------------
 
       if (!shouldLock) {
@@ -404,7 +447,7 @@ export async function POST(
         }
 
         // ----------------------------------------------
-        // UPDATE EXISTING UNLOCKED PICK
+        // UPDATE EXISTING UNLOCKED AUTO PICK
         // ----------------------------------------------
 
         if (existingPick) {
@@ -506,13 +549,13 @@ export async function POST(
       }
 
       // ------------------------------------------------
-      // AT / AFTER THE LOCK TIME
+      // AT / AFTER LOCK TIME
       //
-      // IMPORTANT:
-      // Do NOT use a line fetched after the cutoff.
+      // Use the newest DraftKings snapshot whose
+      // fetched_at is <= exact lock time.
       //
-      // Find the newest DraftKings snapshot whose
-      // fetched_at is <= the exact lock time.
+      // This prevents a post-cutoff line from ever
+      // becoming the official locked line.
       // ------------------------------------------------
 
       const {
@@ -561,8 +604,7 @@ export async function POST(
 
       // ------------------------------------------------
       // SAFETY:
-      // If we have no line from at/before the cutoff,
-      // DO NOT use a later line.
+      // NEVER SUBSTITUTE A LATER LINE
       // ------------------------------------------------
 
       if (!lockOdds) {
@@ -614,8 +656,6 @@ export async function POST(
             line_locked:
               true,
 
-            // Official lock time is EXACTLY
-            // one hour before kickoff.
             lock_time:
               lockTime.toISOString(),
 
@@ -638,10 +678,10 @@ export async function POST(
       }
 
       // ------------------------------------------------
-      // CREATE PICK ALREADY LOCKED
+      // CREATE AUTO PICK ALREADY LOCKED
       //
-      // This handles the case where automation did
-      // not create the pick until after the cutoff.
+      // Handles a case where the automation first sees
+      // the game after the cutoff.
       // ------------------------------------------------
 
       const {
@@ -708,6 +748,14 @@ export async function POST(
 
       week:
         week.week_number,
+
+      window: {
+        startsAt:
+          week.starts_at,
+
+        endsAt:
+          week.ends_at,
+      },
 
       created,
       refreshed,
