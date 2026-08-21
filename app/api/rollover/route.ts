@@ -18,23 +18,33 @@ function calculateRecord(
   playerId: string,
   picks: PickResult[]
 ): RecordSummary {
-  const playerPicks = picks.filter(
-    (pick) => pick.player_id === playerId
-  )
+  const playerPicks =
+    picks.filter(
+      (pick) =>
+        pick.player_id ===
+        playerId
+    )
 
-  const wins = playerPicks.filter(
-    (pick) => pick.result === 'win'
-  ).length
+  const wins =
+    playerPicks.filter(
+      (pick) =>
+        pick.result === 'win'
+    ).length
 
-  const losses = playerPicks.filter(
-    (pick) => pick.result === 'loss'
-  ).length
+  const losses =
+    playerPicks.filter(
+      (pick) =>
+        pick.result === 'loss'
+    ).length
 
-  const pushes = playerPicks.filter(
-    (pick) => pick.result === 'push'
-  ).length
+  const pushes =
+    playerPicks.filter(
+      (pick) =>
+        pick.result === 'push'
+    ).length
 
-  const decisions = wins + losses
+  const decisions =
+    wins + losses
 
   const winPct =
     decisions > 0
@@ -54,20 +64,23 @@ function recalculateWinPct(
   record: RecordSummary
 ) {
   const decisions =
-    record.wins + record.losses
+    record.wins +
+    record.losses
 
   record.winPct =
     decisions > 0
-      ? record.wins / decisions
+      ? record.wins /
+        decisions
       : 0
 }
 
 export async function POST() {
   try {
-    const supabase = createAdminClient()
+    const supabase =
+      createAdminClient()
 
     // --------------------------------------------------
-    // 1. GET CURRENT ACTIVE WEEK
+    // 1. CURRENT ACTIVE WEEK
     // --------------------------------------------------
 
     const {
@@ -84,10 +97,16 @@ export async function POST() {
         starts_at,
         ends_at
       `)
-      .eq('status', 'active')
-      .order('week_number', {
-        ascending: false,
-      })
+      .eq(
+        'status',
+        'active'
+      )
+      .order(
+        'week_number',
+        {
+          ascending: false,
+        }
+      )
       .limit(1)
       .maybeSingle()
 
@@ -109,7 +128,25 @@ export async function POST() {
     }
 
     // --------------------------------------------------
-    // 2. GET PLAYERS
+    // 2. REQUIRE WEEK WINDOW
+    // --------------------------------------------------
+
+    if (
+      !currentWeek.starts_at ||
+      !currentWeek.ends_at
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'The current week must have starts_at and ends_at configured before rollover.',
+        },
+        { status: 400 }
+      )
+    }
+
+    // --------------------------------------------------
+    // 3. PLAYERS
     // --------------------------------------------------
 
     const {
@@ -117,9 +154,10 @@ export async function POST() {
       error: playersError,
     } = await supabase
       .from('players')
-      .select(
-        'id, name'
-      )
+      .select(`
+        id,
+        name
+      `)
       .order('name')
 
     if (playersError) {
@@ -143,7 +181,7 @@ export async function POST() {
     }
 
     // --------------------------------------------------
-    // 3. GET PICKS
+    // 4. PICKS
     // --------------------------------------------------
 
     const {
@@ -183,13 +221,14 @@ export async function POST() {
     }
 
     // --------------------------------------------------
-    // 4. REFUSE ROLLOVER IF PICKS ARE PENDING
+    // 5. ALL PICKS MUST BE FINAL
     // --------------------------------------------------
 
     const pendingPicks =
       picks.filter(
         (pick) =>
-          pick.result === 'pending'
+          pick.result ===
+          'pending'
       )
 
     if (
@@ -198,8 +237,10 @@ export async function POST() {
       return NextResponse.json(
         {
           success: false,
+
           error:
             `${pendingPicks.length} picks are still pending.`,
+
           pendingPicks:
             pendingPicks.length,
         },
@@ -208,21 +249,22 @@ export async function POST() {
     }
 
     // --------------------------------------------------
-    // 5. GET APPROVED ADJUSTMENTS
+    // 6. APPROVED ADJUSTMENTS
     // --------------------------------------------------
 
     const {
       data: adjustments,
       error: adjustmentsError,
     } = await supabase
-      .from('result_adjustments')
+      .from(
+        'result_adjustments'
+      )
       .select(`
         id,
         target_player_id,
         wins_delta,
         losses_delta,
-        pushes_delta,
-        status
+        pushes_delta
       `)
       .eq(
         'week_id',
@@ -240,7 +282,7 @@ export async function POST() {
     }
 
     // --------------------------------------------------
-    // 6. CALCULATE BASE RECORDS
+    // 7. BASE RECORDS
     // --------------------------------------------------
 
     const playerOneRecord =
@@ -256,7 +298,7 @@ export async function POST() {
       )
 
     // --------------------------------------------------
-    // 7. APPLY APPROVED ADJUSTMENTS
+    // 8. APPLY APPROVED ADJUSTMENTS
     // --------------------------------------------------
 
     for (
@@ -308,10 +350,7 @@ export async function POST() {
     }
 
     // --------------------------------------------------
-    // 8. SAFETY CHECK
-    //
-    // Do not allow approved adjustments to produce
-    // impossible negative totals.
+    // 9. PREVENT NEGATIVE RECORDS
     // --------------------------------------------------
 
     const invalidRecord =
@@ -330,20 +369,20 @@ export async function POST() {
         {
           success: false,
           error:
-            'An approved adjustment produced a negative record total. Fix the adjustment before finalizing the week.',
+            'An approved adjustment produced a negative record. Fix it before finalizing the week.',
         },
         { status: 400 }
       )
     }
 
     // --------------------------------------------------
-    // 9. DETERMINE NEXT FIRST PICKER
+    // 10. DETERMINE NEXT FIRST PICKER
     //
-    // Worse winning percentage gets first normal pick.
+    // Worse winning percentage goes first.
     //
-    // If tied:
-    // the player who picked second this week
-    // gets first pick next week.
+    // Tie:
+    // whoever picked second this week
+    // goes first next week.
     // --------------------------------------------------
 
     let nextFirstPickerId:
@@ -380,7 +419,7 @@ export async function POST() {
 
       if (!secondPicker) {
         throw new Error(
-          'Unable to determine the tie-break first picker.'
+          'Unable to determine tie-break draft order.'
         )
       }
 
@@ -388,18 +427,18 @@ export async function POST() {
         secondPicker.id
 
       decisionReason =
-        'Weekly records tied; previous second picker moves to first'
+        'Records tied; previous second picker moves to first'
     }
 
     // --------------------------------------------------
-    // 10. NEXT WEEK NUMBER
+    // 11. NEXT WEEK NUMBER
     // --------------------------------------------------
 
     const nextWeekNumber =
       currentWeek.week_number + 1
 
     // --------------------------------------------------
-    // 11. MAKE SURE NEXT WEEK DOES NOT ALREADY EXIST
+    // 12. MAKE SURE NEXT WEEK DOES NOT EXIST
     // --------------------------------------------------
 
     const {
@@ -410,8 +449,7 @@ export async function POST() {
       .select(`
         id,
         week_number,
-        status,
-        first_picker_id
+        status
       `)
       .eq(
         'season_id',
@@ -435,19 +473,41 @@ export async function POST() {
           success: false,
           error:
             `Week ${nextWeekNumber} already exists.`,
-          existingWeek:
-            existingNextWeek,
         },
         { status: 409 }
       )
     }
 
     // --------------------------------------------------
-    // 12. CREATE NEXT WEEK FIRST
+    // 13. CREATE NEXT WEEK WINDOW
     //
-    // We create the next week before closing the
-    // current week so a failed insert does not leave
-    // us with no active/current week structure.
+    // Current Week 1:
+    // Tue Sep 1 -> Tue Sep 8
+    //
+    // Week 2 becomes:
+    // Tue Sep 8 -> Tue Sep 15
+    // --------------------------------------------------
+
+    const nextStartsAt =
+      new Date(
+        currentWeek.ends_at
+      )
+
+    const nextEndsAt =
+      new Date(
+        nextStartsAt.getTime() +
+          7 *
+            24 *
+            60 *
+            60 *
+            1000
+      )
+
+    // --------------------------------------------------
+    // 14. CREATE NEXT WEEK
+    //
+    // IMPORTANT:
+    // New week becomes ACTIVE immediately.
     // --------------------------------------------------
 
     const {
@@ -466,19 +526,21 @@ export async function POST() {
           nextFirstPickerId,
 
         status:
-          'upcoming',
+          'active',
 
         starts_at:
-          null,
+          nextStartsAt.toISOString(),
 
         ends_at:
-          null,
+          nextEndsAt.toISOString(),
       })
       .select(`
         id,
         week_number,
         first_picker_id,
-        status
+        status,
+        starts_at,
+        ends_at
       `)
       .single()
 
@@ -489,7 +551,7 @@ export async function POST() {
     }
 
     // --------------------------------------------------
-    // 13. CLOSE CURRENT WEEK
+    // 15. CLOSE OLD WEEK
     // --------------------------------------------------
 
     const {
@@ -497,7 +559,8 @@ export async function POST() {
     } = await supabase
       .from('weeks')
       .update({
-        status: 'complete',
+        status:
+          'complete',
       })
       .eq(
         'id',
@@ -505,8 +568,8 @@ export async function POST() {
       )
 
     if (closeError) {
-      // Undo the newly created week if closing
-      // the current week fails.
+      // Roll back the new week if
+      // closing the old week fails.
       await supabase
         .from('weeks')
         .delete()
@@ -521,7 +584,7 @@ export async function POST() {
     }
 
     // --------------------------------------------------
-    // 14. BUILD RESPONSE
+    // 16. RESPONSE DETAILS
     // --------------------------------------------------
 
     const playerOne =
@@ -588,16 +651,25 @@ export async function POST() {
       ],
 
       approvedAdjustments:
-        adjustments?.length ?? 0,
+        adjustments?.length ??
+        0,
 
-      nextWeek:
-        newWeek.week_number,
+      nextWeek: {
+        weekNumber:
+          newWeek.week_number,
 
-      nextWeekStatus:
-        newWeek.status,
+        status:
+          newWeek.status,
 
-      nextFirstPicker:
-        nextFirstPicker?.name,
+        startsAt:
+          newWeek.starts_at,
+
+        endsAt:
+          newWeek.ends_at,
+
+        firstPicker:
+          nextFirstPicker?.name,
+      },
 
       reason:
         decisionReason,
