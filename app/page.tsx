@@ -138,10 +138,6 @@ function formatSpread(
 }
 
 export default async function HomePage() {
-  // --------------------------------------------------
-  // AUTH
-  // --------------------------------------------------
-
   const authSupabase =
     await createClient()
 
@@ -156,10 +152,6 @@ export default async function HomePage() {
 
   const supabase =
     createAdminClient()
-
-  // --------------------------------------------------
-  // LOGGED-IN PLAYER
-  // --------------------------------------------------
 
   const {
     data: loggedInPlayer,
@@ -198,10 +190,6 @@ export default async function HomePage() {
     )
   }
 
-  // --------------------------------------------------
-  // PLAYERS
-  // --------------------------------------------------
-
   const {
     data: playersData,
     error: playersError,
@@ -222,10 +210,6 @@ export default async function HomePage() {
 
   const players =
     (playersData ?? []) as Player[]
-
-  // --------------------------------------------------
-  // ACTIVE WEEK
-  // --------------------------------------------------
 
   const {
     data: week,
@@ -278,17 +262,28 @@ export default async function HomePage() {
               </p>
             </div>
 
-            <form
-              action="/auth/signout"
-              method="post"
-            >
-              <button
-                type="submit"
-                className="rounded-xl border border-slate-700 px-4 py-2 font-bold text-slate-300"
+            <div className="flex flex-wrap items-center gap-2">
+
+              <a
+                href="/history"
+                className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold hover:bg-slate-800"
               >
-                Sign Out
-              </button>
-            </form>
+                History
+              </a>
+
+              <form
+                action="/auth/signout"
+                method="post"
+              >
+                <button
+                  type="submit"
+                  className="rounded-xl border border-slate-700 px-4 py-2 font-bold text-slate-300"
+                >
+                  Sign Out
+                </button>
+              </form>
+
+            </div>
 
           </div>
 
@@ -301,10 +296,6 @@ export default async function HomePage() {
       </main>
     )
   }
-
-  // --------------------------------------------------
-  // SEASON
-  // --------------------------------------------------
 
   const {
     data: season,
@@ -326,10 +317,6 @@ export default async function HomePage() {
       seasonError.message
     )
   }
-
-  // --------------------------------------------------
-  // PICKS
-  // --------------------------------------------------
 
   const {
     data: picksData,
@@ -372,10 +359,6 @@ export default async function HomePage() {
   const picks =
     (picksData ?? []) as Pick[]
 
-  // --------------------------------------------------
-  // APPROVED ADJUSTMENTS
-  // --------------------------------------------------
-
   const {
     data: adjustmentsData,
     error: adjustmentsError,
@@ -405,10 +388,6 @@ export default async function HomePage() {
   const adjustments =
     (adjustmentsData ??
       []) as ApprovedAdjustment[]
-
-  // --------------------------------------------------
-  // GAMES INSIDE ACTIVE WEEK WINDOW
-  // --------------------------------------------------
 
   let gamesQuery =
     supabase
@@ -468,12 +447,6 @@ export default async function HomePage() {
   const allGames =
     (gamesData ?? []) as Game[]
 
-  // --------------------------------------------------
-  // REMOVE GAMES THAT HAVE ALREADY STARTED
-  //
-  // DraftBoard separately removes drafted games.
-  // --------------------------------------------------
-
   const now =
     Date.now()
 
@@ -484,10 +457,6 @@ export default async function HomePage() {
           game.start_time
         ).getTime() > now
     )
-
-  // --------------------------------------------------
-  // LOAD DRAFTKINGS ODDS FOR THOSE GAMES
-  // --------------------------------------------------
 
   const futureGameIds =
     futureGames.map(
@@ -541,20 +510,6 @@ export default async function HomePage() {
       (oddsData ?? []) as Odd[]
   }
 
-  // --------------------------------------------------
-  // BUILD EXACT GAME SHAPE DRAFTBOARD EXPECTS
-  //
-  // DraftBoard expects:
-  //
-  // {
-  //   id,
-  //   home_team,
-  //   away_team,
-  //   start_time,
-  //   odds: [...]
-  // }
-  // --------------------------------------------------
-
   const draftGames: DraftGame[] =
     futureGames.map(
       (game) => ({
@@ -601,10 +556,6 @@ export default async function HomePage() {
       })
     )
 
-  // --------------------------------------------------
-  // CURRENT TURN
-  // --------------------------------------------------
-
   const normalPicks =
     picks.filter(
       (pick) =>
@@ -638,10 +589,6 @@ export default async function HomePage() {
         currentTurnPlayerId
     )
 
-  // --------------------------------------------------
-  // WEEK RECORDS
-  // --------------------------------------------------
-
   const playerRecords =
     players.map(
       (player) => ({
@@ -655,10 +602,6 @@ export default async function HomePage() {
           ),
       })
     )
-
-  // --------------------------------------------------
-  // AUTOMATIC PICKS
-  // --------------------------------------------------
 
   const automaticPicks =
     picks.filter(
@@ -676,16 +619,10 @@ export default async function HomePage() {
     )
   }
 
-  // --------------------------------------------------
-  // PAGE
-  // --------------------------------------------------
-
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6">
 
       <div className="mx-auto max-w-7xl">
-
-        {/* HEADER */}
 
         <header className="mb-8">
 
@@ -727,6 +664,13 @@ export default async function HomePage() {
               <NotificationButton />
 
               <a
+                href="/history"
+                className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold hover:bg-slate-800"
+              >
+                History
+              </a>
+
+              <a
                 href="/admin"
                 className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold hover:bg-slate-800"
               >
@@ -751,8 +695,6 @@ export default async function HomePage() {
 
         </header>
 
-        {/* WEEK WINDOW WARNING */}
-
         {(
           !week.starts_at ||
           !week.ends_at
@@ -761,8 +703,6 @@ export default async function HomePage() {
             This week does not have a complete game window configured. Set the week start and end times in Admin.
           </div>
         )}
-
-        {/* RECORD CARDS */}
 
         <section className="mb-6 grid gap-4 sm:grid-cols-2">
 
@@ -835,11 +775,7 @@ export default async function HomePage() {
 
         </section>
 
-        {/* MAIN GRID */}
-
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-
-          {/* DRAFT BOARD */}
 
           <section>
 
@@ -880,11 +816,7 @@ export default async function HomePage() {
 
           </section>
 
-          {/* SIDEBAR */}
-
           <aside className="space-y-6">
-
-            {/* AUTOMATIC PICKS */}
 
             <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
 
@@ -964,8 +896,6 @@ export default async function HomePage() {
 
             </section>
 
-            {/* WEEK STATUS */}
-
             <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
 
               <h2 className="text-xl font-black">
@@ -1039,8 +969,6 @@ export default async function HomePage() {
               </div>
 
             </section>
-
-            {/* APPROVED ADJUSTMENTS */}
 
             {adjustments.length >
               0 && (
@@ -1118,8 +1046,6 @@ export default async function HomePage() {
 
               </section>
             )}
-
-            {/* RULES */}
 
             <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
 
