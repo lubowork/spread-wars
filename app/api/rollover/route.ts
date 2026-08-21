@@ -11,6 +11,209 @@ type PlayerRecord = {
   winPct: number
 }
 
+const WEEK_TIME_ZONE =
+  'America/New_York'
+
+// --------------------------------------------------
+// GET LOCAL DATE/TIME PARTS IN EASTERN TIME
+// --------------------------------------------------
+
+function getZonedParts(
+  date: Date
+) {
+  const formatter =
+    new Intl.DateTimeFormat(
+      'en-US',
+      {
+        timeZone:
+          WEEK_TIME_ZONE,
+
+        year:
+          'numeric',
+
+        month:
+          '2-digit',
+
+        day:
+          '2-digit',
+
+        hour:
+          '2-digit',
+
+        minute:
+          '2-digit',
+
+        second:
+          '2-digit',
+
+        hourCycle:
+          'h23',
+      }
+    )
+
+  const parts =
+    formatter.formatToParts(
+      date
+    )
+
+  const values:
+    Record<string, string> =
+    {}
+
+  for (const part of parts) {
+    if (
+      part.type !==
+      'literal'
+    ) {
+      values[
+        part.type
+      ] = part.value
+    }
+  }
+
+  return {
+    year:
+      Number(
+        values.year
+      ),
+
+    month:
+      Number(
+        values.month
+      ),
+
+    day:
+      Number(
+        values.day
+      ),
+
+    hour:
+      Number(
+        values.hour
+      ),
+
+    minute:
+      Number(
+        values.minute
+      ),
+
+    second:
+      Number(
+        values.second
+      ),
+  }
+}
+
+// --------------------------------------------------
+// CONVERT AN EASTERN WALL-CLOCK TIME TO UTC
+//
+// This avoids assuming that Eastern Time is always
+// UTC-4 or always UTC-5.
+// --------------------------------------------------
+
+function easternPartsToUtc(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  second: number
+) {
+  const targetAsUtc =
+    Date.UTC(
+      year,
+      month - 1,
+      day,
+      hour,
+      minute,
+      second
+    )
+
+  let guess =
+    targetAsUtc
+
+  // Iterate because the Eastern offset can change
+  // around daylight-saving transitions.
+  for (
+    let attempt = 0;
+    attempt < 4;
+    attempt++
+  ) {
+    const currentParts =
+      getZonedParts(
+        new Date(guess)
+      )
+
+    const currentAsUtc =
+      Date.UTC(
+        currentParts.year,
+        currentParts.month -
+          1,
+        currentParts.day,
+        currentParts.hour,
+        currentParts.minute,
+        currentParts.second
+      )
+
+    const difference =
+      targetAsUtc -
+      currentAsUtc
+
+    if (
+      difference === 0
+    ) {
+      break
+    }
+
+    guess +=
+      difference
+  }
+
+  return new Date(guess)
+}
+
+// --------------------------------------------------
+// ADD CALENDAR DAYS IN EASTERN TIME
+//
+// Example:
+// Sunday 12:00 AM ET + 7 days
+// remains Sunday 12:00 AM ET,
+// even across a DST change.
+// --------------------------------------------------
+
+function addEasternCalendarDays(
+  date: Date,
+  days: number
+) {
+  const parts =
+    getZonedParts(date)
+
+  // Use UTC math only to advance the CALENDAR date.
+  // We convert back to Eastern afterward.
+  const calendarDate =
+    new Date(
+      Date.UTC(
+        parts.year,
+        parts.month - 1,
+        parts.day +
+          days,
+        parts.hour,
+        parts.minute,
+        parts.second
+      )
+    )
+
+  return easternPartsToUtc(
+    calendarDate.getUTCFullYear(),
+    calendarDate.getUTCMonth() +
+      1,
+    calendarDate.getUTCDate(),
+    calendarDate.getUTCHours(),
+    calendarDate.getUTCMinutes(),
+    calendarDate.getUTCSeconds()
+  )
+}
+
 export async function POST() {
   try {
     // --------------------------------------------------
@@ -26,13 +229,19 @@ export async function POST() {
     } =
       await authSupabase.auth.getUser()
 
-    if (userError || !user) {
+    if (
+      userError ||
+      !user
+    ) {
       return NextResponse.json(
         {
           success: false,
-          error: 'You must be signed in.',
+          error:
+            'You must be signed in.',
         },
-        { status: 401 }
+        {
+          status: 401,
+        }
       )
     }
 
@@ -40,8 +249,10 @@ export async function POST() {
       createAdminClient()
 
     const {
-      data: loggedInPlayer,
-      error: loggedInPlayerError,
+      data:
+        loggedInPlayer,
+      error:
+        loggedInPlayerError,
     } = await supabase
       .from('players')
       .select(`
@@ -54,20 +265,26 @@ export async function POST() {
       )
       .maybeSingle()
 
-    if (loggedInPlayerError) {
+    if (
+      loggedInPlayerError
+    ) {
       throw new Error(
         loggedInPlayerError.message
       )
     }
 
-    if (!loggedInPlayer) {
+    if (
+      !loggedInPlayer
+    ) {
       return NextResponse.json(
         {
           success: false,
           error:
             'Your login is not linked to a Spread Wars player.',
         },
-        { status: 403 }
+        {
+          status: 403,
+        }
       )
     }
 
@@ -76,7 +293,8 @@ export async function POST() {
     // --------------------------------------------------
 
     const {
-      data: currentWeek,
+      data:
+        currentWeek,
       error: weekError,
     } = await supabase
       .from('weeks')
@@ -96,7 +314,8 @@ export async function POST() {
       .order(
         'week_number',
         {
-          ascending: false,
+          ascending:
+            false,
         }
       )
       .limit(1)
@@ -115,7 +334,9 @@ export async function POST() {
           error:
             'No active week was found.',
         },
-        { status: 404 }
+        {
+          status: 404,
+        }
       )
     }
 
@@ -129,7 +350,9 @@ export async function POST() {
           error:
             'The active week must have a start and end time before it can be finalized.',
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       )
     }
 
@@ -139,7 +362,8 @@ export async function POST() {
 
     const {
       data: players,
-      error: playersError,
+      error:
+        playersError,
     } = await supabase
       .from('players')
       .select(`
@@ -164,7 +388,9 @@ export async function POST() {
           error:
             'Exactly two Spread Wars players are required.',
         },
-        { status: 500 }
+        {
+          status: 500,
+        }
       )
     }
 
@@ -203,7 +429,9 @@ export async function POST() {
           error:
             'This week has no picks and cannot be finalized.',
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       )
     }
 
@@ -215,15 +443,19 @@ export async function POST() {
       )
 
     if (
-      pendingPicks.length > 0
+      pendingPicks.length >
+      0
     ) {
       return NextResponse.json(
         {
           success: false,
+
           error:
             `${pendingPicks.length} pick(s) are still pending. Grade all results before finalizing the week.`,
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       )
     }
 
@@ -233,7 +465,8 @@ export async function POST() {
 
     const {
       data: adjustments,
-      error: adjustmentError,
+      error:
+        adjustmentError,
     } = await supabase
       .from(
         'result_adjustments'
@@ -263,103 +496,114 @@ export async function POST() {
     // CALCULATE FINAL WEEK RECORDS
     // --------------------------------------------------
 
-    const records: PlayerRecord[] =
-      players.map((player) => {
-        const playerPicks =
-          picks.filter(
-            (pick) =>
-              pick.player_id ===
-              player.id
-          )
+    const records:
+      PlayerRecord[] =
+      players.map(
+        (player) => {
+          const playerPicks =
+            picks.filter(
+              (pick) =>
+                pick.player_id ===
+                player.id
+            )
 
-        let wins =
-          playerPicks.filter(
-            (pick) =>
-              pick.result ===
-              'win'
-          ).length
+          let wins =
+            playerPicks.filter(
+              (pick) =>
+                pick.result ===
+                'win'
+            ).length
 
-        let losses =
-          playerPicks.filter(
-            (pick) =>
-              pick.result ===
-              'loss'
-          ).length
+          let losses =
+            playerPicks.filter(
+              (pick) =>
+                pick.result ===
+                'loss'
+            ).length
 
-        let pushes =
-          playerPicks.filter(
-            (pick) =>
-              pick.result ===
-              'push'
-          ).length
+          let pushes =
+            playerPicks.filter(
+              (pick) =>
+                pick.result ===
+                'push'
+            ).length
 
-        const playerAdjustments =
-          (adjustments ?? []).filter(
-            (adjustment) =>
-              adjustment.target_player_id ===
-              player.id
-          )
+          const playerAdjustments =
+            (
+              adjustments ??
+              []
+            ).filter(
+              (
+                adjustment
+              ) =>
+                adjustment.target_player_id ===
+                player.id
+            )
 
-        for (
-          const adjustment of
-          playerAdjustments
-        ) {
-          wins +=
-            Number(
-              adjustment.wins_delta
-            ) || 0
+          for (
+            const adjustment of
+            playerAdjustments
+          ) {
+            wins +=
+              Number(
+                adjustment.wins_delta
+              ) || 0
 
-          losses +=
-            Number(
-              adjustment.losses_delta
-            ) || 0
+            losses +=
+              Number(
+                adjustment.losses_delta
+              ) || 0
 
-          pushes +=
-            Number(
-              adjustment.pushes_delta
-            ) || 0
+            pushes +=
+              Number(
+                adjustment.pushes_delta
+              ) || 0
+          }
+
+          if (
+            wins < 0 ||
+            losses < 0 ||
+            pushes < 0
+          ) {
+            throw new Error(
+              `Approved adjustments would create a negative record for ${player.name}.`
+            )
+          }
+
+          const decisions =
+            wins +
+            losses
+
+          const winPct =
+            decisions > 0
+              ? wins /
+                decisions
+              : 0
+
+          return {
+            playerId:
+              player.id,
+
+            name:
+              player.name,
+
+            wins,
+            losses,
+            pushes,
+            winPct,
+          }
         }
-
-        if (
-          wins < 0 ||
-          losses < 0 ||
-          pushes < 0
-        ) {
-          throw new Error(
-            `Approved adjustments would create a negative record for ${player.name}.`
-          )
-        }
-
-        const decisions =
-          wins + losses
-
-        const winPct =
-          decisions > 0
-            ? wins / decisions
-            : 0
-
-        return {
-          playerId:
-            player.id,
-
-          name:
-            player.name,
-
-          wins,
-          losses,
-          pushes,
-          winPct,
-        }
-      })
+      )
 
     // --------------------------------------------------
     // DETERMINE NEXT WEEK FIRST PICKER
     //
     // Worse record picks first.
-    // Pushes do not affect winning percentage.
     //
-    // If tied:
-    // Whoever picked second this week gets first next week.
+    // Pushes are excluded from winning percentage.
+    //
+    // Tie:
+    // whoever picked second this week gets first next.
     // --------------------------------------------------
 
     const firstRecord =
@@ -391,7 +635,9 @@ export async function POST() {
             currentWeek.first_picker_id
         )
 
-      if (!playerWhoPickedSecond) {
+      if (
+        !playerWhoPickedSecond
+      ) {
         throw new Error(
           'Unable to determine the next first picker.'
         )
@@ -410,7 +656,8 @@ export async function POST() {
       1
 
     const {
-      data: existingNextWeek,
+      data:
+        existingNextWeek,
       error:
         existingNextWeekError,
     } = await supabase
@@ -434,22 +681,35 @@ export async function POST() {
       )
     }
 
-    if (existingNextWeek) {
+    if (
+      existingNextWeek
+    ) {
       return NextResponse.json(
         {
           success: false,
+
           error:
             `Week ${nextWeekNumber} already exists.`,
         },
-        { status: 409 }
+        {
+          status: 409,
+        }
       )
     }
 
     // --------------------------------------------------
-    // NEXT WEEK WINDOW
+    // NEXT WEEK WINDOW — DST SAFE
     //
-    // For now the next week starts when the current
-    // week ends and runs exactly seven days.
+    // Next week begins exactly when this week ends.
+    //
+    // Its end is seven EASTERN CALENDAR DAYS later,
+    // rather than blindly adding 168 hours.
+    //
+    // Example around DST:
+    //
+    // 12:00 AM ET -> 12:00 AM ET
+    //
+    // instead of potentially becoming 11 PM or 1 AM.
     // --------------------------------------------------
 
     const nextStartsAt =
@@ -458,13 +718,9 @@ export async function POST() {
       )
 
     const nextEndsAt =
-      new Date(
-        nextStartsAt.getTime() +
-          7 *
-            24 *
-            60 *
-            60 *
-            1000
+      addEasternCalendarDays(
+        nextStartsAt,
+        7
       )
 
     // --------------------------------------------------
@@ -473,7 +729,8 @@ export async function POST() {
 
     const {
       data: nextWeek,
-      error: nextWeekError,
+      error:
+        nextWeekError,
     } = await supabase
       .from('weeks')
       .insert({
@@ -529,8 +786,9 @@ export async function POST() {
         currentWeek.id
       )
 
-    // If closing the old week fails, remove
-    // the new week so we do not leave two active weeks.
+    // If closing the old week fails,
+    // remove the newly-created week so
+    // we do not leave two active weeks.
     if (closeWeekError) {
       await supabase
         .from('weeks')
@@ -581,6 +839,9 @@ export async function POST() {
         endsAt:
           nextWeek.ends_at,
 
+        timeZone:
+          WEEK_TIME_ZONE,
+
         firstPickerId:
           nextFirstPickerId,
 
@@ -604,7 +865,9 @@ export async function POST() {
             ? error.message
             : 'Unable to finalize week.',
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     )
   }
 }
