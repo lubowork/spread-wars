@@ -53,7 +53,7 @@ function isoToLocalInput(
   const local =
     new Date(
       date.getTime() -
-      offset * 60 * 1000
+        offset * 60 * 1000
     )
 
   return local
@@ -220,7 +220,7 @@ export default function AdminPage() {
   }, [])
 
   // --------------------------------------------------
-  // GENERIC ADMIN ACTION
+  // GENERIC SYSTEM ACTION
   // --------------------------------------------------
 
   async function runAction(
@@ -229,6 +229,7 @@ export default function AdminPage() {
   ) {
     try {
       setLoading(true)
+
       setMessage(
         `${label}...`
       )
@@ -293,6 +294,10 @@ export default function AdminPage() {
     event.preventDefault()
 
     if (!week) {
+      setMessage(
+        'No active week was found.'
+      )
+
       return
     }
 
@@ -303,6 +308,7 @@ export default function AdminPage() {
       setMessage(
         'Start and end dates are required.'
       )
+
       return
     }
 
@@ -310,8 +316,6 @@ export default function AdminPage() {
       setLoading(true)
       setMessage('')
 
-      // Browser converts local phone/computer
-      // time to proper UTC ISO timestamps.
       const startsAt =
         new Date(
           weekStartsAt
@@ -400,6 +404,7 @@ export default function AdminPage() {
       setMessage(
         'No active week.'
       )
+
       return
     }
 
@@ -592,36 +597,41 @@ export default function AdminPage() {
 
       <div className="mx-auto max-w-5xl">
 
-        <div className="mb-8 flex items-center justify-between">
+        {/* HEADER */}
 
-          <div>
-            <h1 className="text-3xl font-black">
-              Spread Wars Admin
-            </h1>
-
-            <p className="mt-1 text-slate-400">
-              Week{' '}
-              {week?.week_number ??
-                '—'}
-            </p>
-          </div>
+        <div className="mb-8">
 
           <a
             href="/"
-            className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 font-bold"
+            className="text-sm font-bold text-cyan-400 hover:text-cyan-300"
           >
-            Back to Draft
+            ← Back to Spread Wars
           </a>
+
+          <h1 className="mt-5 text-4xl font-black">
+            Spread Wars Admin
+          </h1>
+
+          <p className="mt-1 text-slate-400">
+            Week{' '}
+            {week?.week_number ??
+              '—'}{' '}
+            ·{' '}
+            {week?.status ??
+              'No active week'}
+          </p>
 
         </div>
 
+        {/* MESSAGE */}
+
         {message && (
-          <div className="mb-6 rounded-xl border border-slate-700 bg-slate-900 p-4">
+          <div className="mb-6 rounded-xl border border-slate-700 bg-slate-900 p-4 text-sm">
             {message}
           </div>
         )}
 
-        {/* WEEK WINDOW */}
+        {/* WEEK GAME WINDOW */}
 
         <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
 
@@ -630,7 +640,7 @@ export default function AdminPage() {
           </h2>
 
           <p className="mt-2 text-sm text-slate-400">
-            Only games inside this window appear on the draft board and qualify for automatic Penn State/Miami picks.
+            Only games inside this time window appear on the draft board and qualify for the automatic Penn State and Miami picks.
           </p>
 
           <form
@@ -641,8 +651,8 @@ export default function AdminPage() {
           >
 
             <div>
-              <label className="mb-2 block text-sm font-bold">
-                Starts
+              <label className="mb-2 block text-sm font-bold text-slate-300">
+                Week Starts
               </label>
 
               <input
@@ -658,13 +668,13 @@ export default function AdminPage() {
                       .value
                   )
                 }
-                className="w-full rounded-xl bg-white px-4 py-3 text-slate-950"
+                className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
               />
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-bold">
-                Ends
+              <label className="mb-2 block text-sm font-bold text-slate-300">
+                Week Ends
               </label>
 
               <input
@@ -680,11 +690,12 @@ export default function AdminPage() {
                       .value
                   )
                 }
-                className="w-full rounded-xl bg-white px-4 py-3 text-slate-950"
+                className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
               />
             </div>
 
             <div className="md:col-span-2">
+
               <button
                 type="submit"
                 disabled={
@@ -695,6 +706,7 @@ export default function AdminPage() {
               >
                 Save Week Window
               </button>
+
             </div>
 
           </form>
@@ -705,13 +717,18 @@ export default function AdminPage() {
 
         <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
 
-          <h2 className="mb-4 text-xl font-black">
-            System
+          <h2 className="text-xl font-black">
+            System Actions
           </h2>
 
-          <div className="flex flex-wrap gap-3">
+          <p className="mt-2 text-sm text-slate-400">
+            Scheduled jobs now handle odds, automatic picks, and results. These buttons are mainly for troubleshooting.
+          </p>
+
+          <div className="mt-6 grid gap-3 md:grid-cols-2">
 
             <button
+              type="button"
               onClick={() =>
                 runAction(
                   '/api/sync',
@@ -719,12 +736,13 @@ export default function AdminPage() {
                 )
               }
               disabled={loading}
-              className="rounded-xl bg-slate-800 px-4 py-3 font-bold"
+              className="rounded-xl bg-cyan-600 px-4 py-4 font-black hover:bg-cyan-500 disabled:opacity-50"
             >
-              Sync Odds
+              Sync DraftKings Odds
             </button>
 
             <button
+              type="button"
               onClick={() =>
                 runAction(
                   '/api/automatic-picks',
@@ -732,12 +750,13 @@ export default function AdminPage() {
                 )
               }
               disabled={loading}
-              className="rounded-xl bg-slate-800 px-4 py-3 font-bold"
+              className="rounded-xl bg-violet-600 px-4 py-4 font-black hover:bg-violet-500 disabled:opacity-50"
             >
-              Automatic Picks
+              Refresh Automatic Picks
             </button>
 
             <button
+              type="button"
               onClick={() =>
                 runAction(
                   '/api/results',
@@ -745,12 +764,13 @@ export default function AdminPage() {
                 )
               }
               disabled={loading}
-              className="rounded-xl bg-slate-800 px-4 py-3 font-bold"
+              className="rounded-xl bg-emerald-600 px-4 py-4 font-black hover:bg-emerald-500 disabled:opacity-50"
             >
-              Grade Results
+              Check Results
             </button>
 
             <button
+              type="button"
               onClick={() =>
                 runAction(
                   '/api/rollover',
@@ -758,20 +778,16 @@ export default function AdminPage() {
                 )
               }
               disabled={loading}
-              className="rounded-xl bg-red-900/50 px-4 py-3 font-bold text-red-200"
+              className="rounded-xl bg-orange-600 px-4 py-4 font-black hover:bg-orange-500 disabled:opacity-50"
             >
               Finalize Week
             </button>
 
           </div>
 
-          <p className="mt-4 text-xs text-slate-500">
-            Odds, automatic picks, and results are now handled automatically by scheduled jobs. These controls are mainly for troubleshooting.
-          </p>
-
         </section>
 
-        {/* ADJUSTMENT REQUEST */}
+        {/* REQUEST ADJUSTMENT */}
 
         <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
 
@@ -779,17 +795,22 @@ export default function AdminPage() {
             Request Record Adjustment
           </h2>
 
+          <p className="mt-2 text-sm text-slate-400">
+            Both players must approve before an adjustment counts.
+          </p>
+
           <form
             onSubmit={
               submitAdjustment
             }
-            className="mt-5 space-y-4"
+            className="mt-6 space-y-5"
           >
 
             <div className="grid gap-4 md:grid-cols-2">
 
               <div>
-                <label className="mb-2 block text-sm font-bold">
+
+                <label className="mb-2 block text-sm font-bold text-slate-300">
                   Adjust Player
                 </label>
 
@@ -805,8 +826,9 @@ export default function AdminPage() {
                         .value
                     )
                   }
-                  className="w-full rounded-xl bg-white px-4 py-3 text-slate-950"
+                  className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
                 >
+
                   {players.map(
                     (player) => (
                       <option
@@ -823,11 +845,14 @@ export default function AdminPage() {
                       </option>
                     )
                   )}
+
                 </select>
+
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-bold">
+
+                <label className="mb-2 block text-sm font-bold text-slate-300">
                   Requested By
                 </label>
 
@@ -843,8 +868,9 @@ export default function AdminPage() {
                         .value
                     )
                   }
-                  className="w-full rounded-xl bg-white px-4 py-3 text-slate-950"
+                  className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
                 >
+
                   {players.map(
                     (player) => (
                       <option
@@ -861,16 +887,19 @@ export default function AdminPage() {
                       </option>
                     )
                   )}
+
                 </select>
+
               </div>
 
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid gap-4 md:grid-cols-3">
 
               <div>
-                <label className="mb-2 block text-sm">
-                  Wins
+
+                <label className="mb-2 block text-sm font-bold text-slate-300">
+                  Wins Change
                 </label>
 
                 <input
@@ -888,13 +917,15 @@ export default function AdminPage() {
                       )
                     )
                   }
-                  className="w-full rounded-xl bg-white px-3 py-3 text-slate-950"
+                  className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
                 />
+
               </div>
 
               <div>
-                <label className="mb-2 block text-sm">
-                  Losses
+
+                <label className="mb-2 block text-sm font-bold text-slate-300">
+                  Losses Change
                 </label>
 
                 <input
@@ -912,13 +943,15 @@ export default function AdminPage() {
                       )
                     )
                   }
-                  className="w-full rounded-xl bg-white px-3 py-3 text-slate-950"
+                  className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
                 />
+
               </div>
 
               <div>
-                <label className="mb-2 block text-sm">
-                  Pushes
+
+                <label className="mb-2 block text-sm font-bold text-slate-300">
+                  Pushes Change
                 </label>
 
                 <input
@@ -936,14 +969,16 @@ export default function AdminPage() {
                       )
                     )
                   }
-                  className="w-full rounded-xl bg-white px-3 py-3 text-slate-950"
+                  className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
                 />
+
               </div>
 
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-bold">
+
+              <label className="mb-2 block text-sm font-bold text-slate-300">
                 Reason
               </label>
 
@@ -958,8 +993,10 @@ export default function AdminPage() {
                       .value
                   )
                 }
-                className="min-h-24 w-full rounded-xl bg-white px-4 py-3 text-slate-950"
+                className="min-h-24 w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
+                placeholder="Why is this adjustment needed?"
               />
+
             </div>
 
             <button
@@ -977,21 +1014,25 @@ export default function AdminPage() {
 
         </section>
 
-        {/* ADJUSTMENTS */}
+        {/* ADJUSTMENT VOTES */}
 
         <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
 
-          <h2 className="mb-5 text-xl font-black">
+          <h2 className="text-xl font-black">
             Adjustment Votes
           </h2>
 
+          <p className="mt-2 text-sm text-slate-400">
+            Two YES votes approve an adjustment. Any NO vote rejects it.
+          </p>
+
           {adjustments.length ===
           0 ? (
-            <p className="text-slate-500">
+            <p className="mt-6 text-slate-500">
               No adjustment requests.
             </p>
           ) : (
-            <div className="space-y-4">
+            <div className="mt-6 space-y-4">
 
               {adjustments.map(
                 (adjustment) => (
@@ -999,14 +1040,14 @@ export default function AdminPage() {
                     key={
                       adjustment.id
                     }
-                    className="rounded-xl bg-slate-800 p-5"
+                    className="rounded-xl border border-slate-700 bg-slate-800 p-5"
                   >
 
                     <div className="flex flex-wrap items-start justify-between gap-4">
 
                       <div>
 
-                        <div className="font-black">
+                        <div className="text-lg font-black">
                           {playerName(
                             adjustment.target_player_id
                           )}
@@ -1019,22 +1060,45 @@ export default function AdminPage() {
                           )}
                         </div>
 
-                        <div className="mt-3">
-                          W{' '}
+                        <div className="mt-3 text-sm">
+
+                          Wins{' '}
+                          {Number(
+                            adjustment.wins_delta
+                          ) >= 0
+                            ? '+'
+                            : ''}
                           {
                             adjustment.wins_delta
-                          }{' '}
-                          · L{' '}
+                          }
+
+                          {' · '}
+
+                          Losses{' '}
+                          {Number(
+                            adjustment.losses_delta
+                          ) >= 0
+                            ? '+'
+                            : ''}
                           {
                             adjustment.losses_delta
-                          }{' '}
-                          · P{' '}
+                          }
+
+                          {' · '}
+
+                          Pushes{' '}
+                          {Number(
+                            adjustment.pushes_delta
+                          ) >= 0
+                            ? '+'
+                            : ''}
                           {
                             adjustment.pushes_delta
                           }
+
                         </div>
 
-                        <div className="mt-2 text-sm text-slate-300">
+                        <div className="mt-3 text-sm text-slate-300">
                           {
                             adjustment.reason
                           }
@@ -1042,7 +1106,17 @@ export default function AdminPage() {
 
                       </div>
 
-                      <div className="rounded-full bg-slate-950 px-3 py-1 text-xs font-bold uppercase">
+                      <div
+                        className={`rounded-full px-3 py-1 text-xs font-black uppercase ${
+                          adjustment.status ===
+                          'approved'
+                            ? 'bg-emerald-950 text-emerald-400'
+                            : adjustment.status ===
+                              'rejected'
+                            ? 'bg-red-950 text-red-400'
+                            : 'bg-slate-950 text-slate-300'
+                        }`}
+                      >
                         {
                           adjustment.status
                         }
@@ -1069,17 +1143,29 @@ export default function AdminPage() {
                               className="rounded-xl bg-slate-900 p-4"
                             >
 
-                              <div className="mb-3 flex justify-between">
+                              <div className="mb-3 flex items-center justify-between">
+
                                 <strong>
                                   {
                                     player.name
                                   }
                                 </strong>
 
-                                <span className="text-sm uppercase text-slate-400">
+                                <span
+                                  className={`text-sm font-bold uppercase ${
+                                    existingVote?.vote ===
+                                    'yes'
+                                      ? 'text-emerald-400'
+                                      : existingVote?.vote ===
+                                        'no'
+                                      ? 'text-red-400'
+                                      : 'text-slate-500'
+                                  }`}
+                                >
                                   {existingVote?.vote ??
                                     'No vote'}
                                 </span>
+
                               </div>
 
                               {adjustment.status ===
@@ -1098,7 +1184,7 @@ export default function AdminPage() {
                                         'yes'
                                       )
                                     }
-                                    className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-bold"
+                                    className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-black hover:bg-emerald-600 disabled:opacity-50"
                                   >
                                     YES
                                   </button>
@@ -1115,7 +1201,7 @@ export default function AdminPage() {
                                         'no'
                                       )
                                     }
-                                    className="rounded-lg bg-red-800 px-3 py-2 text-sm font-bold"
+                                    className="rounded-lg bg-red-800 px-4 py-2 text-sm font-black hover:bg-red-700 disabled:opacity-50"
                                   >
                                     NO
                                   </button>
