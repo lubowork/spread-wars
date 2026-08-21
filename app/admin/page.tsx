@@ -1,6 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import {
+  FormEvent,
+  useEffect,
+  useState,
+} from 'react'
 
 type Player = {
   id: string
@@ -11,6 +15,8 @@ type Week = {
   id: string
   week_number: number
   status: string
+  starts_at: string | null
+  ends_at: string | null
 }
 
 type Vote = {
@@ -31,49 +37,173 @@ type Adjustment = {
   adjustment_votes: Vote[]
 }
 
+function isoToLocalInput(
+  iso: string | null
+) {
+  if (!iso) {
+    return ''
+  }
+
+  const date =
+    new Date(iso)
+
+  const offset =
+    date.getTimezoneOffset()
+
+  const local =
+    new Date(
+      date.getTime() -
+      offset * 60 * 1000
+    )
+
+  return local
+    .toISOString()
+    .slice(0, 16)
+}
+
 export default function AdminPage() {
-  const [players, setPlayers] = useState<Player[]>([])
-  const [week, setWeek] = useState<Week | null>(null)
-  const [adjustments, setAdjustments] = useState<Adjustment[]>([])
+  const [players, setPlayers] =
+    useState<Player[]>([])
 
-  const [targetPlayerId, setTargetPlayerId] = useState('')
-  const [requestedByPlayerId, setRequestedByPlayerId] = useState('')
+  const [week, setWeek] =
+    useState<Week | null>(null)
 
-  const [winsDelta, setWinsDelta] = useState(0)
-  const [lossesDelta, setLossesDelta] = useState(0)
-  const [pushesDelta, setPushesDelta] = useState(0)
+  const [
+    adjustments,
+    setAdjustments,
+  ] =
+    useState<Adjustment[]>([])
 
-  const [reason, setReason] = useState('')
-  const [message, setMessage] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [
+    targetPlayerId,
+    setTargetPlayerId,
+  ] =
+    useState('')
+
+  const [
+    requestedByPlayerId,
+    setRequestedByPlayerId,
+  ] =
+    useState('')
+
+  const [
+    winsDelta,
+    setWinsDelta,
+  ] =
+    useState(0)
+
+  const [
+    lossesDelta,
+    setLossesDelta,
+  ] =
+    useState(0)
+
+  const [
+    pushesDelta,
+    setPushesDelta,
+  ] =
+    useState(0)
+
+  const [reason, setReason] =
+    useState('')
+
+  const [
+    weekStartsAt,
+    setWeekStartsAt,
+  ] =
+    useState('')
+
+  const [
+    weekEndsAt,
+    setWeekEndsAt,
+  ] =
+    useState('')
+
+  const [message, setMessage] =
+    useState('')
+
+  const [loading, setLoading] =
+    useState(false)
+
+  // --------------------------------------------------
+  // LOAD ADMIN DATA
+  // --------------------------------------------------
 
   async function loadData() {
     try {
-      const response = await fetch('/api/admin/data', {
-        cache: 'no-store',
-      })
+      const response =
+        await fetch(
+          '/api/admin/data',
+          {
+            cache: 'no-store',
+          }
+        )
 
-      const data = await response.json()
+      const responseText =
+        await response.text()
 
-      if (!response.ok) {
+      let data: any
+
+      try {
+        data =
+          JSON.parse(
+            responseText
+          )
+      } catch {
         throw new Error(
-          data.error || 'Unable to load admin data.'
+          `Admin data returned an unexpected response (${response.status}).`
         )
       }
 
-      const loadedPlayers: Player[] = data.players ?? []
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            'Unable to load admin data.'
+        )
+      }
 
-      setPlayers(loadedPlayers)
-      setWeek(data.week ?? null)
-      setAdjustments(data.adjustments ?? [])
+      setPlayers(
+        data.players ?? []
+      )
 
-      if (loadedPlayers.length > 0) {
-        setTargetPlayerId((current) =>
-          current || loadedPlayers[0].id
+      setWeek(
+        data.week ?? null
+      )
+
+      setAdjustments(
+        data.adjustments ?? []
+      )
+
+      if (data.week) {
+        setWeekStartsAt(
+          isoToLocalInput(
+            data.week.starts_at
+          )
         )
 
-        setRequestedByPlayerId((current) =>
-          current || loadedPlayers[0].id
+        setWeekEndsAt(
+          isoToLocalInput(
+            data.week.ends_at
+          )
+        )
+      }
+
+      if (
+        data.players?.length > 0
+      ) {
+        setTargetPlayerId(
+          (current) =>
+            current ||
+            data.players[0].id
+        )
+
+        setRequestedByPlayerId(
+          (current) =>
+            current ||
+            data.players[0].id
         )
       }
     } catch (error) {
@@ -89,42 +219,56 @@ export default function AdminPage() {
     loadData()
   }, [])
 
+  // --------------------------------------------------
+  // GENERIC ADMIN ACTION
+  // --------------------------------------------------
+
   async function runAction(
     url: string,
-    method: 'GET' | 'POST' = 'GET'
+    label: string
   ) {
-    setLoading(true)
-    setMessage('')
-
     try {
-      const response = await fetch(url, {
-        method,
-      })
+      setLoading(true)
+      setMessage(
+        `${label}...`
+      )
 
-      const text = await response.text()
+      const response =
+        await fetch(
+          url,
+          {
+            method: 'POST',
+          }
+        )
 
-      let data
+      const responseText =
+        await response.text()
+
+      let data: any
 
       try {
-        data = JSON.parse(text)
+        data =
+          JSON.parse(
+            responseText
+          )
       } catch {
         throw new Error(
-          `Server returned an unexpected response: ${text}`
+          `Unexpected server response (${response.status}).`
         )
       }
 
-      if (!response.ok) {
+      if (
+        !response.ok ||
+        !data.success
+      ) {
         throw new Error(
-          data.error || `Action failed with status ${response.status}`
+          data.error ||
+            `${label} failed.`
         )
       }
 
       setMessage(
-        JSON.stringify(
-          data,
-          null,
-          2
-        )
+        `${label} completed successfully.`
       )
 
       await loadData()
@@ -132,84 +276,211 @@ export default function AdminPage() {
       setMessage(
         error instanceof Error
           ? error.message
-          : 'Action failed.'
+          : `${label} failed.`
       )
     } finally {
       setLoading(false)
     }
   }
 
-  async function submitAdjustment() {
+  // --------------------------------------------------
+  // UPDATE WEEK WINDOW
+  // --------------------------------------------------
+
+  async function updateWeekWindow(
+    event: FormEvent
+  ) {
+    event.preventDefault()
+
     if (!week) {
-      setMessage('No active week was found.')
       return
     }
 
-    if (!targetPlayerId) {
-      setMessage('Please select the player to adjust.')
-      return
-    }
-
-    if (!requestedByPlayerId) {
+    if (
+      !weekStartsAt ||
+      !weekEndsAt
+    ) {
       setMessage(
-        'Please select who is requesting the adjustment.'
+        'Start and end dates are required.'
       )
       return
     }
-
-    if (!reason.trim()) {
-      setMessage('Please enter a reason for the adjustment.')
-      return
-    }
-
-    setLoading(true)
-    setMessage('Submitting adjustment...')
 
     try {
-      const response = await fetch(
-        '/api/admin/adjustments',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            weekId: week.id,
-            targetPlayerId,
-            requestedByPlayerId,
-            winsDelta,
-            lossesDelta,
-            pushesDelta,
-            reason: reason.trim(),
-          }),
-        }
-      )
+      setLoading(true)
+      setMessage('')
 
-      const text = await response.text()
+      // Browser converts local phone/computer
+      // time to proper UTC ISO timestamps.
+      const startsAt =
+        new Date(
+          weekStartsAt
+        ).toISOString()
 
-      let data
+      const endsAt =
+        new Date(
+          weekEndsAt
+        ).toISOString()
+
+      const response =
+        await fetch(
+          '/api/admin/week-window',
+          {
+            method: 'POST',
+
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+
+            body:
+              JSON.stringify({
+                weekId:
+                  week.id,
+
+                startsAt,
+                endsAt,
+              }),
+          }
+        )
+
+      const responseText =
+        await response.text()
+
+      let data: any
 
       try {
-        data = JSON.parse(text)
+        data =
+          JSON.parse(
+            responseText
+          )
       } catch {
         throw new Error(
-          `Server returned an unexpected response: ${text}`
+          `Unexpected response (${response.status}).`
         )
       }
 
-      if (!response.ok) {
+      if (
+        !response.ok ||
+        !data.success
+      ) {
         throw new Error(
           data.error ||
-            `Request failed with status ${response.status}`
+            'Unable to update week window.'
         )
       }
 
-      setMessage('Adjustment request created successfully.')
+      setMessage(
+        data.message ||
+          'Week window updated.'
+      )
 
+      await loadData()
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Unable to update week window.'
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // --------------------------------------------------
+  // SUBMIT ADJUSTMENT
+  // --------------------------------------------------
+
+  async function submitAdjustment(
+    event: FormEvent
+  ) {
+    event.preventDefault()
+
+    if (!week) {
+      setMessage(
+        'No active week.'
+      )
+      return
+    }
+
+    try {
+      setLoading(true)
+      setMessage('')
+
+      const response =
+        await fetch(
+          '/api/admin/adjustments',
+          {
+            method: 'POST',
+
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+
+            body:
+              JSON.stringify({
+                weekId:
+                  week.id,
+
+                targetPlayerId,
+
+                requestedByPlayerId,
+
+                winsDelta:
+                  Number(
+                    winsDelta
+                  ),
+
+                lossesDelta:
+                  Number(
+                    lossesDelta
+                  ),
+
+                pushesDelta:
+                  Number(
+                    pushesDelta
+                  ),
+
+                reason,
+              }),
+          }
+        )
+
+      const responseText =
+        await response.text()
+
+      let data: any
+
+      try {
+        data =
+          JSON.parse(
+            responseText
+          )
+      } catch {
+        throw new Error(
+          `Unexpected response (${response.status}).`
+        )
+      }
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            'Unable to create adjustment.'
+        )
+      }
+
+      setReason('')
       setWinsDelta(0)
       setLossesDelta(0)
       setPushesDelta(0)
-      setReason('')
+
+      setMessage(
+        'Adjustment request created.'
+      )
 
       await loadData()
     } catch (error) {
@@ -223,51 +494,70 @@ export default function AdminPage() {
     }
   }
 
+  // --------------------------------------------------
+  // VOTE
+  // --------------------------------------------------
+
   async function vote(
     adjustmentId: string,
     playerId: string,
-    voteValue: 'yes' | 'no'
+    voteValue:
+      | 'yes'
+      | 'no'
   ) {
-    setLoading(true)
-    setMessage('')
-
     try {
-      const response = await fetch(
-        '/api/admin/vote',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            adjustmentId,
-            playerId,
-            vote: voteValue,
-          }),
-        }
-      )
+      setLoading(true)
+      setMessage('')
 
-      const text = await response.text()
+      const response =
+        await fetch(
+          '/api/admin/vote',
+          {
+            method: 'POST',
 
-      let data
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+
+            body:
+              JSON.stringify({
+                adjustmentId,
+                playerId,
+                vote:
+                  voteValue,
+              }),
+          }
+        )
+
+      const responseText =
+        await response.text()
+
+      let data: any
 
       try {
-        data = JSON.parse(text)
+        data =
+          JSON.parse(
+            responseText
+          )
       } catch {
         throw new Error(
-          `Server returned an unexpected response: ${text}`
+          `Unexpected response (${response.status}).`
         )
       }
 
-      if (!response.ok) {
+      if (
+        !response.ok ||
+        !data.success
+      ) {
         throw new Error(
           data.error ||
-            `Vote failed with status ${response.status}`
+            'Unable to record vote.'
         )
       }
 
       setMessage(
-        `Vote recorded. Status: ${data.status}`
+        'Vote recorded.'
       )
 
       await loadData()
@@ -275,400 +565,532 @@ export default function AdminPage() {
       setMessage(
         error instanceof Error
           ? error.message
-          : 'Vote failed.'
+          : 'Unable to record vote.'
       )
     } finally {
       setLoading(false)
     }
   }
 
-  function playerName(id: string) {
+  function playerName(
+    id: string
+  ) {
     return (
       players.find(
-        (player) => player.id === id
+        (player) =>
+          player.id === id
       )?.name ?? 'Unknown'
     )
   }
 
+  // --------------------------------------------------
+  // PAGE
+  // --------------------------------------------------
+
   return (
-    <main className="min-h-screen bg-slate-950 text-white">
-      <div className="mx-auto max-w-6xl px-6 py-8">
+    <main className="min-h-screen bg-slate-950 p-6 text-white">
 
-        <a
-          href="/"
-          className="text-sm text-cyan-400 hover:text-cyan-300"
-        >
-          ← Back to Spread Wars
-        </a>
+      <div className="mx-auto max-w-5xl">
 
-        <div className="mt-4">
-          <h1 className="text-4xl font-black">
-            Spread Wars Admin
-          </h1>
+        <div className="mb-8 flex items-center justify-between">
 
-          <p className="mt-2 text-slate-400">
-            Week {week?.week_number ?? '—'} ·{' '}
-            {week?.status ?? '—'}
-          </p>
+          <div>
+            <h1 className="text-3xl font-black">
+              Spread Wars Admin
+            </h1>
+
+            <p className="mt-1 text-slate-400">
+              Week{' '}
+              {week?.week_number ??
+                '—'}
+            </p>
+          </div>
+
+          <a
+            href="/"
+            className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 font-bold"
+          >
+            Back to Draft
+          </a>
+
         </div>
 
-        <section className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-6">
-          <h2 className="text-xl font-bold">
-            System Actions
+        {message && (
+          <div className="mb-6 rounded-xl border border-slate-700 bg-slate-900 p-4">
+            {message}
+          </div>
+        )}
+
+        {/* WEEK WINDOW */}
+
+        <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+
+          <h2 className="text-xl font-black">
+            Week Game Window
           </h2>
 
-          <p className="mt-1 text-sm text-slate-400">
-            Run data syncs and weekly management tasks.
+          <p className="mt-2 text-sm text-slate-400">
+            Only games inside this window appear on the draft board and qualify for automatic Penn State/Miami picks.
           </p>
 
-          <div className="mt-5 grid gap-3 md:grid-cols-2">
+          <form
+            onSubmit={
+              updateWeekWindow
+            }
+            className="mt-6 grid gap-4 md:grid-cols-2"
+          >
+
+            <div>
+              <label className="mb-2 block text-sm font-bold">
+                Starts
+              </label>
+
+              <input
+                type="datetime-local"
+                value={
+                  weekStartsAt
+                }
+                onChange={(
+                  event
+                ) =>
+                  setWeekStartsAt(
+                    event.target
+                      .value
+                  )
+                }
+                className="w-full rounded-xl bg-white px-4 py-3 text-slate-950"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-bold">
+                Ends
+              </label>
+
+              <input
+                type="datetime-local"
+                value={
+                  weekEndsAt
+                }
+                onChange={(
+                  event
+                ) =>
+                  setWeekEndsAt(
+                    event.target
+                      .value
+                  )
+                }
+                className="w-full rounded-xl bg-white px-4 py-3 text-slate-950"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <button
+                type="submit"
+                disabled={
+                  loading ||
+                  !week
+                }
+                className="rounded-xl bg-emerald-500 px-5 py-3 font-black text-slate-950 disabled:opacity-50"
+              >
+                Save Week Window
+              </button>
+            </div>
+
+          </form>
+
+        </section>
+
+        {/* SYSTEM ACTIONS */}
+
+        <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+
+          <h2 className="mb-4 text-xl font-black">
+            System
+          </h2>
+
+          <div className="flex flex-wrap gap-3">
 
             <button
-              type="button"
-              disabled={loading}
               onClick={() =>
-                runAction('/api/sync')
+                runAction(
+                  '/api/sync',
+                  'Odds sync'
+                )
               }
-              className="rounded-xl bg-cyan-600 px-5 py-4 font-bold text-white hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={loading}
+              className="rounded-xl bg-slate-800 px-4 py-3 font-bold"
             >
-              Sync DraftKings Odds
+              Sync Odds
             </button>
 
             <button
-              type="button"
-              disabled={loading}
               onClick={() =>
-                runAction('/api/automatic-picks')
+                runAction(
+                  '/api/automatic-picks',
+                  'Automatic picks'
+                )
               }
-              className="rounded-xl bg-indigo-600 px-5 py-4 font-bold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={loading}
+              className="rounded-xl bg-slate-800 px-4 py-3 font-bold"
             >
-              Refresh Automatic Picks
+              Automatic Picks
             </button>
 
             <button
-              type="button"
-              disabled={loading}
               onClick={() =>
-                runAction('/api/results')
+                runAction(
+                  '/api/results',
+                  'Results sync'
+                )
               }
-              className="rounded-xl bg-emerald-600 px-5 py-4 font-bold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={loading}
+              className="rounded-xl bg-slate-800 px-4 py-3 font-bold"
             >
-              Check Results
+              Grade Results
             </button>
 
             <button
-              type="button"
-              disabled={loading}
               onClick={() =>
                 runAction(
                   '/api/rollover',
-                  'POST'
+                  'Week rollover'
                 )
               }
-              className="rounded-xl bg-amber-600 px-5 py-4 font-bold text-white hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={loading}
+              className="rounded-xl bg-red-900/50 px-4 py-3 font-bold text-red-200"
             >
               Finalize Week
             </button>
 
           </div>
+
+          <p className="mt-4 text-xs text-slate-500">
+            Odds, automatic picks, and results are now handled automatically by scheduled jobs. These controls are mainly for troubleshooting.
+          </p>
+
         </section>
 
-        {message && (
-          <section className="mt-6 rounded-xl border border-slate-700 bg-slate-900 p-4">
-            <pre className="whitespace-pre-wrap text-sm text-slate-300">
-              {message}
-            </pre>
-          </section>
-        )}
+        {/* ADJUSTMENT REQUEST */}
 
-        <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+        <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
 
-          <h2 className="text-xl font-bold">
+          <h2 className="text-xl font-black">
             Request Record Adjustment
           </h2>
 
-          <p className="mt-1 text-sm text-slate-400">
-            Both players must approve before the adjustment counts.
-          </p>
+          <form
+            onSubmit={
+              submitAdjustment
+            }
+            className="mt-5 space-y-4"
+          >
 
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2">
 
-            <label>
-              <div className="text-sm text-slate-400">
-                Adjust Player
-              </div>
+              <div>
+                <label className="mb-2 block text-sm font-bold">
+                  Adjust Player
+                </label>
 
-              <select
-                value={targetPlayerId}
-                onChange={(event) =>
-                  setTargetPlayerId(
-                    event.target.value
-                  )
-                }
-                className="mt-2 w-full rounded-lg border border-slate-700 bg-white p-3 text-slate-900"
-              >
-                {players.map((player) => (
-                  <option
-                    key={player.id}
-                    value={player.id}
-                    className="bg-white text-slate-900"
-                  >
-                    {player.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              <div className="text-sm text-slate-400">
-                Requested By
-              </div>
-
-              <select
-                value={requestedByPlayerId}
-                onChange={(event) =>
-                  setRequestedByPlayerId(
-                    event.target.value
-                  )
-                }
-                className="mt-2 w-full rounded-lg border border-slate-700 bg-white p-3 text-slate-900"
-              >
-                {players.map((player) => (
-                  <option
-                    key={player.id}
-                    value={player.id}
-                    className="bg-white text-slate-900"
-                  >
-                    {player.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              <div className="text-sm text-slate-400">
-                Wins Change
-              </div>
-
-              <input
-                type="number"
-                value={winsDelta}
-                onChange={(event) =>
-                  setWinsDelta(
-                    Number(
-                      event.target.value
+                <select
+                  value={
+                    targetPlayerId
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setTargetPlayerId(
+                      event.target
+                        .value
                     )
-                  )
-                }
-                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-white"
-              />
-            </label>
-
-            <label>
-              <div className="text-sm text-slate-400">
-                Losses Change
+                  }
+                  className="w-full rounded-xl bg-white px-4 py-3 text-slate-950"
+                >
+                  {players.map(
+                    (player) => (
+                      <option
+                        key={
+                          player.id
+                        }
+                        value={
+                          player.id
+                        }
+                      >
+                        {
+                          player.name
+                        }
+                      </option>
+                    )
+                  )}
+                </select>
               </div>
 
-              <input
-                type="number"
-                value={lossesDelta}
-                onChange={(event) =>
-                  setLossesDelta(
-                    Number(
-                      event.target.value
-                    )
-                  )
-                }
-                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-white"
-              />
-            </label>
+              <div>
+                <label className="mb-2 block text-sm font-bold">
+                  Requested By
+                </label>
 
-            <label>
-              <div className="text-sm text-slate-400">
-                Pushes Change
+                <select
+                  value={
+                    requestedByPlayerId
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setRequestedByPlayerId(
+                      event.target
+                        .value
+                    )
+                  }
+                  className="w-full rounded-xl bg-white px-4 py-3 text-slate-950"
+                >
+                  {players.map(
+                    (player) => (
+                      <option
+                        key={
+                          player.id
+                        }
+                        value={
+                          player.id
+                        }
+                      >
+                        {
+                          player.name
+                        }
+                      </option>
+                    )
+                  )}
+                </select>
               </div>
 
-              <input
-                type="number"
-                value={pushesDelta}
-                onChange={(event) =>
-                  setPushesDelta(
-                    Number(
-                      event.target.value
-                    )
-                  )
-                }
-                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-white"
-              />
-            </label>
-
-          </div>
-
-          <label className="mt-4 block">
-            <div className="text-sm text-slate-400">
-              Reason
             </div>
 
-            <textarea
-              value={reason}
-              onChange={(event) =>
-                setReason(
-                  event.target.value
-                )
-              }
-              rows={3}
-              placeholder="Explain why the weekly record should be adjusted..."
-              className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-white placeholder:text-slate-600"
-            />
-          </label>
+            <div className="grid grid-cols-3 gap-4">
 
-          <button
-            type="button"
-            disabled={
-              loading ||
-              !reason.trim() ||
-              !targetPlayerId ||
-              !requestedByPlayerId
-            }
-            onClick={submitAdjustment}
-            className="mt-5 rounded-lg bg-cyan-600 px-5 py-3 font-bold text-white hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {loading
-              ? 'Submitting...'
-              : 'Submit Adjustment Request'}
-          </button>
+              <div>
+                <label className="mb-2 block text-sm">
+                  Wins
+                </label>
+
+                <input
+                  type="number"
+                  value={
+                    winsDelta
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setWinsDelta(
+                      Number(
+                        event.target
+                          .value
+                      )
+                    )
+                  }
+                  className="w-full rounded-xl bg-white px-3 py-3 text-slate-950"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm">
+                  Losses
+                </label>
+
+                <input
+                  type="number"
+                  value={
+                    lossesDelta
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setLossesDelta(
+                      Number(
+                        event.target
+                          .value
+                      )
+                    )
+                  }
+                  className="w-full rounded-xl bg-white px-3 py-3 text-slate-950"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm">
+                  Pushes
+                </label>
+
+                <input
+                  type="number"
+                  value={
+                    pushesDelta
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setPushesDelta(
+                      Number(
+                        event.target
+                          .value
+                      )
+                    )
+                  }
+                  className="w-full rounded-xl bg-white px-3 py-3 text-slate-950"
+                />
+              </div>
+
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-bold">
+                Reason
+              </label>
+
+              <textarea
+                required
+                value={reason}
+                onChange={(
+                  event
+                ) =>
+                  setReason(
+                    event.target
+                      .value
+                  )
+                }
+                className="min-h-24 w-full rounded-xl bg-white px-4 py-3 text-slate-950"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={
+                loading ||
+                !week
+              }
+              className="rounded-xl bg-cyan-500 px-5 py-3 font-black text-slate-950 disabled:opacity-50"
+            >
+              Submit Adjustment
+            </button>
+
+          </form>
 
         </section>
 
-        <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+        {/* ADJUSTMENTS */}
 
-          <h2 className="text-xl font-bold">
-            Adjustment Requests
+        <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+
+          <h2 className="mb-5 text-xl font-black">
+            Adjustment Votes
           </h2>
 
-          <div className="mt-5 space-y-4">
+          {adjustments.length ===
+          0 ? (
+            <p className="text-slate-500">
+              No adjustment requests.
+            </p>
+          ) : (
+            <div className="space-y-4">
 
-            {adjustments.length === 0 ? (
-              <div className="text-sm text-slate-500">
-                No adjustment requests yet.
-              </div>
-            ) : (
-              adjustments.map(
-                (adjustment) => {
+              {adjustments.map(
+                (adjustment) => (
+                  <div
+                    key={
+                      adjustment.id
+                    }
+                    className="rounded-xl bg-slate-800 p-5"
+                  >
 
-                  return (
-                    <div
-                      key={adjustment.id}
-                      className="rounded-xl border border-slate-700 bg-slate-950 p-5"
-                    >
+                    <div className="flex flex-wrap items-start justify-between gap-4">
 
-                      <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div>
 
-                        <div>
-                          <div className="font-bold">
-                            {playerName(
-                              adjustment.target_player_id
-                            )}
-                          </div>
-
-                          <div className="text-sm text-slate-400">
-                            Requested by{' '}
-                            {playerName(
-                              adjustment.requested_by_player_id
-                            )}
-                          </div>
+                        <div className="font-black">
+                          {playerName(
+                            adjustment.target_player_id
+                          )}
                         </div>
 
-                        <span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-bold uppercase">
-                          {adjustment.status}
-                        </span>
-
-                      </div>
-
-                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
-
-                        <div className="rounded-lg bg-slate-900 p-3">
-                          <div className="text-xs text-slate-500">
-                            Wins
-                          </div>
-
-                          <div className="font-bold">
-                            {adjustment.wins_delta > 0
-                              ? '+'
-                              : ''}
-                            {adjustment.wins_delta}
-                          </div>
+                        <div className="mt-1 text-sm text-slate-400">
+                          Requested by{' '}
+                          {playerName(
+                            adjustment.requested_by_player_id
+                          )}
                         </div>
 
-                        <div className="rounded-lg bg-slate-900 p-3">
-                          <div className="text-xs text-slate-500">
-                            Losses
-                          </div>
-
-                          <div className="font-bold">
-                            {adjustment.losses_delta > 0
-                              ? '+'
-                              : ''}
-                            {adjustment.losses_delta}
-                          </div>
+                        <div className="mt-3">
+                          W{' '}
+                          {
+                            adjustment.wins_delta
+                          }{' '}
+                          · L{' '}
+                          {
+                            adjustment.losses_delta
+                          }{' '}
+                          · P{' '}
+                          {
+                            adjustment.pushes_delta
+                          }
                         </div>
 
-                        <div className="rounded-lg bg-slate-900 p-3">
-                          <div className="text-xs text-slate-500">
-                            Pushes
-                          </div>
-
-                          <div className="font-bold">
-                            {adjustment.pushes_delta > 0
-                              ? '+'
-                              : ''}
-                            {adjustment.pushes_delta}
-                          </div>
+                        <div className="mt-2 text-sm text-slate-300">
+                          {
+                            adjustment.reason
+                          }
                         </div>
 
                       </div>
 
-                      <p className="mt-4 text-sm text-slate-300">
-                        {adjustment.reason}
-                      </p>
+                      <div className="rounded-full bg-slate-950 px-3 py-1 text-xs font-bold uppercase">
+                        {
+                          adjustment.status
+                        }
+                      </div>
 
-                      <div className="mt-5 space-y-3">
+                    </div>
 
-                        {players.map((player) => {
+                    <div className="mt-5 grid gap-3 md:grid-cols-2">
+
+                      {players.map(
+                        (player) => {
                           const existingVote =
-                            adjustment.adjustment_votes?.find(
-                              (item) =>
-                                item.player_id ===
+                            adjustment.adjustment_votes.find(
+                              (vote) =>
+                                vote.player_id ===
                                 player.id
                             )
 
                           return (
                             <div
-                              key={player.id}
-                              className="flex items-center justify-between rounded-lg bg-slate-900 p-3"
+                              key={
+                                player.id
+                              }
+                              className="rounded-xl bg-slate-900 p-4"
                             >
 
-                              <span>
-                                {player.name}
-                              </span>
-
-                              {existingVote ? (
-                                <strong
-                                  className={
-                                    existingVote.vote === 'yes'
-                                      ? 'text-emerald-400'
-                                      : 'text-red-400'
+                              <div className="mb-3 flex justify-between">
+                                <strong>
+                                  {
+                                    player.name
                                   }
-                                >
-                                  {existingVote.vote.toUpperCase()}
                                 </strong>
-                              ) : adjustment.status ===
-                                'pending' ? (
+
+                                <span className="text-sm uppercase text-slate-400">
+                                  {existingVote?.vote ??
+                                    'No vote'}
+                                </span>
+                              </div>
+
+                              {adjustment.status ===
+                                'pending' && (
                                 <div className="flex gap-2">
 
                                   <button
                                     type="button"
-                                    disabled={loading}
+                                    disabled={
+                                      loading
+                                    }
                                     onClick={() =>
                                       vote(
                                         adjustment.id,
@@ -676,14 +1098,16 @@ export default function AdminPage() {
                                         'yes'
                                       )
                                     }
-                                    className="rounded bg-emerald-700 px-3 py-1 text-sm font-bold text-white hover:bg-emerald-600 disabled:opacity-40"
+                                    className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-bold"
                                   >
                                     YES
                                   </button>
 
                                   <button
                                     type="button"
-                                    disabled={loading}
+                                    disabled={
+                                      loading
+                                    }
                                     onClick={() =>
                                       vote(
                                         adjustment.id,
@@ -691,35 +1115,32 @@ export default function AdminPage() {
                                         'no'
                                       )
                                     }
-                                    className="rounded bg-red-700 px-3 py-1 text-sm font-bold text-white hover:bg-red-600 disabled:opacity-40"
+                                    className="rounded-lg bg-red-800 px-3 py-2 text-sm font-bold"
                                   >
                                     NO
                                   </button>
 
                                 </div>
-                              ) : (
-                                <span className="text-slate-500">
-                                  —
-                                </span>
                               )}
 
                             </div>
                           )
-                        })}
-
-                      </div>
+                        }
+                      )}
 
                     </div>
-                  )
-                }
-              )
-            )}
 
-          </div>
+                  </div>
+                )
+              )}
+
+            </div>
+          )}
 
         </section>
 
       </div>
+
     </main>
   )
 }

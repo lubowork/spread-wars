@@ -22,7 +22,13 @@ export async function GET() {
       error: weekError,
     } = await supabase
       .from('weeks')
-      .select('id, week_number, status')
+      .select(`
+        id,
+        week_number,
+        status,
+        starts_at,
+        ends_at
+      `)
       .eq('status', 'active')
       .order('week_number', {
         ascending: false,
@@ -65,12 +71,16 @@ export async function GET() {
       })
 
     if (adjustmentsError) {
-      throw new Error(adjustmentsError.message)
+      throw new Error(
+        adjustmentsError.message
+      )
     }
 
-    const adjustmentIds = (adjustments ?? []).map(
-      (adjustment) => adjustment.id
-    )
+    const adjustmentIds =
+      (adjustments ?? []).map(
+        (adjustment) =>
+          adjustment.id
+      )
 
     let votes: {
       adjustment_id: string
@@ -95,27 +105,34 @@ export async function GET() {
         )
 
       if (voteError) {
-        throw new Error(voteError.message)
+        throw new Error(
+          voteError.message
+        )
       }
 
       votes = voteData ?? []
     }
 
-    const adjustmentsWithVotes = (
-      adjustments ?? []
-    ).map((adjustment) => ({
-      ...adjustment,
-      adjustment_votes: votes.filter(
-        (vote) =>
-          vote.adjustment_id === adjustment.id
-      ),
-    }))
+    const adjustmentsWithVotes =
+      (adjustments ?? []).map(
+        (adjustment) => ({
+          ...adjustment,
+
+          adjustment_votes:
+            votes.filter(
+              (vote) =>
+                vote.adjustment_id ===
+                adjustment.id
+            ),
+        })
+      )
 
     return NextResponse.json({
       success: true,
       players: players ?? [],
       week,
-      adjustments: adjustmentsWithVotes,
+      adjustments:
+        adjustmentsWithVotes,
     })
   } catch (error) {
     console.error(
@@ -126,6 +143,7 @@ export async function GET() {
     return NextResponse.json(
       {
         success: false,
+
         error:
           error instanceof Error
             ? error.message
