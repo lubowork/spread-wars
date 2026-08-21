@@ -1,86 +1,78 @@
 import { NextResponse } from 'next/server'
+import { createClient } from '../../../lib/supabase-server'
 import { createAdminClient } from '../../../lib/supabase-admin'
 
-type PickResult = {
-  player_id: string
-  result: string
-}
-
-type RecordSummary = {
+type PlayerRecord = {
   playerId: string
+  name: string
   wins: number
   losses: number
   pushes: number
   winPct: number
 }
 
-function calculateRecord(
-  playerId: string,
-  picks: PickResult[]
-): RecordSummary {
-  const playerPicks =
-    picks.filter(
-      (pick) =>
-        pick.player_id ===
-        playerId
-    )
-
-  const wins =
-    playerPicks.filter(
-      (pick) =>
-        pick.result === 'win'
-    ).length
-
-  const losses =
-    playerPicks.filter(
-      (pick) =>
-        pick.result === 'loss'
-    ).length
-
-  const pushes =
-    playerPicks.filter(
-      (pick) =>
-        pick.result === 'push'
-    ).length
-
-  const decisions =
-    wins + losses
-
-  const winPct =
-    decisions > 0
-      ? wins / decisions
-      : 0
-
-  return {
-    playerId,
-    wins,
-    losses,
-    pushes,
-    winPct,
-  }
-}
-
-function recalculateWinPct(
-  record: RecordSummary
-) {
-  const decisions =
-    record.wins +
-    record.losses
-
-  record.winPct =
-    decisions > 0
-      ? record.wins /
-        decisions
-      : 0
-}
-
 export async function POST() {
   try {
+    // --------------------------------------------------
+    // REQUIRE SIGNED-IN SPREAD WARS PLAYER
+    // --------------------------------------------------
+
+    const authSupabase =
+      await createClient()
+
+    const {
+      data: { user },
+      error: userError,
+    } =
+      await authSupabase.auth.getUser()
+
+    if (userError || !user) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'You must be signed in.',
+        },
+        { status: 401 }
+      )
+    }
+
     const supabase =
       createAdminClient()
 
+    const {
+      data: loggedInPlayer,
+      error: loggedInPlayerError,
+    } = await supabase
+      .from('players')
+      .select(`
+        id,
+        name
+      `)
+      .eq(
+        'auth_user_id',
+        user.id
+      )
+      .maybeSingle()
+
+    if (loggedInPlayerError) {
+      throw new Error(
+        loggedInPlayerError.message
+      )
+    }
+
+    if (!loggedInPlayer) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Your login is not linked to a Spread Wars player.',
+        },
+        { status: 403 }
+      )
+    }
+
     // --------------------------------------------------
-    // 1. CURRENT ACTIVE WEEK
+    // CURRENT ACTIVE WEEK
     // --------------------------------------------------
 
     const {
@@ -93,9 +85,9 @@ export async function POST() {
         season_id,
         week_number,
         first_picker_id,
-        status,
         starts_at,
-        ends_at
+        ends_at,
+        status
       `)
       .eq(
         'status',
@@ -127,10 +119,6 @@ export async function POST() {
       )
     }
 
-    // --------------------------------------------------
-    // 2. REQUIRE WEEK WINDOW
-    // --------------------------------------------------
-
     if (
       !currentWeek.starts_at ||
       !currentWeek.ends_at
@@ -139,14 +127,14 @@ export async function POST() {
         {
           success: false,
           error:
-            'The current week must have starts_at and ends_at configured before rollover.',
+            'The active week must have a start and end time before it can be finalized.',
         },
         { status: 400 }
       )
     }
 
     // --------------------------------------------------
-    // 3. PLAYERS
+    // PLAYERS
     // --------------------------------------------------
 
     const {
@@ -174,14 +162,14 @@ export async function POST() {
         {
           success: false,
           error:
-            'Exactly two players are required.',
+            'Exactly two Spread Wars players are required.',
         },
         { status: 500 }
       )
     }
 
     // --------------------------------------------------
-    // 4. PICKS
+    // ALL PICKS FOR CURRENT WEEK
     // --------------------------------------------------
 
     const {
@@ -192,8 +180,7 @@ export async function POST() {
       .select(`
         id,
         player_id,
-        result,
-        is_automatic
+        result
       `)
       .eq(
         'week_id',
@@ -214,15 +201,11 @@ export async function POST() {
         {
           success: false,
           error:
-            'There are no picks for this week.',
+            'This week has no picks and cannot be finalized.',
         },
         { status: 400 }
       )
     }
-
-    // --------------------------------------------------
-    // 5. ALL PICKS MUST BE FINAL
-    // --------------------------------------------------
 
     const pendingPicks =
       picks.filter(
@@ -237,30 +220,25 @@ export async function POST() {
       return NextResponse.json(
         {
           success: false,
-
           error:
-            `${pendingPicks.length} picks are still pending.`,
-
-          pendingPicks:
-            pendingPicks.length,
+            `${pendingPicks.length} pick(s) are still pending. Grade all results before finalizing the week.`,
         },
         { status: 400 }
       )
     }
 
     // --------------------------------------------------
-    // 6. APPROVED ADJUSTMENTS
+    // APPROVED RECORD ADJUSTMENTS
     // --------------------------------------------------
 
     const {
       data: adjustments,
-      error: adjustmentsError,
+      error: adjustmentError,
     } = await supabase
       .from(
         'result_adjustments'
       )
       .select(`
-        id,
         target_player_id,
         wins_delta,
         losses_delta,
@@ -275,182 +253,169 @@ export async function POST() {
         'approved'
       )
 
-    if (adjustmentsError) {
+    if (adjustmentError) {
       throw new Error(
-        adjustmentsError.message
+        adjustmentError.message
       )
     }
 
     // --------------------------------------------------
-    // 7. BASE RECORDS
+    // CALCULATE FINAL WEEK RECORDS
     // --------------------------------------------------
 
-    const playerOneRecord =
-      calculateRecord(
-        players[0].id,
-        picks
-      )
+    const records: PlayerRecord[] =
+      players.map((player) => {
+        const playerPicks =
+          picks.filter(
+            (pick) =>
+              pick.player_id ===
+              player.id
+          )
 
-    const playerTwoRecord =
-      calculateRecord(
-        players[1].id,
-        picks
-      )
+        let wins =
+          playerPicks.filter(
+            (pick) =>
+              pick.result ===
+              'win'
+          ).length
+
+        let losses =
+          playerPicks.filter(
+            (pick) =>
+              pick.result ===
+              'loss'
+          ).length
+
+        let pushes =
+          playerPicks.filter(
+            (pick) =>
+              pick.result ===
+              'push'
+          ).length
+
+        const playerAdjustments =
+          (adjustments ?? []).filter(
+            (adjustment) =>
+              adjustment.target_player_id ===
+              player.id
+          )
+
+        for (
+          const adjustment of
+          playerAdjustments
+        ) {
+          wins +=
+            Number(
+              adjustment.wins_delta
+            ) || 0
+
+          losses +=
+            Number(
+              adjustment.losses_delta
+            ) || 0
+
+          pushes +=
+            Number(
+              adjustment.pushes_delta
+            ) || 0
+        }
+
+        if (
+          wins < 0 ||
+          losses < 0 ||
+          pushes < 0
+        ) {
+          throw new Error(
+            `Approved adjustments would create a negative record for ${player.name}.`
+          )
+        }
+
+        const decisions =
+          wins + losses
+
+        const winPct =
+          decisions > 0
+            ? wins / decisions
+            : 0
+
+        return {
+          playerId:
+            player.id,
+
+          name:
+            player.name,
+
+          wins,
+          losses,
+          pushes,
+          winPct,
+        }
+      })
 
     // --------------------------------------------------
-    // 8. APPLY APPROVED ADJUSTMENTS
-    // --------------------------------------------------
-
-    for (
-      const adjustment of
-      adjustments ?? []
-    ) {
-      let target:
-        | RecordSummary
-        | null = null
-
-      if (
-        adjustment.target_player_id ===
-        playerOneRecord.playerId
-      ) {
-        target =
-          playerOneRecord
-      }
-
-      if (
-        adjustment.target_player_id ===
-        playerTwoRecord.playerId
-      ) {
-        target =
-          playerTwoRecord
-      }
-
-      if (!target) {
-        continue
-      }
-
-      target.wins +=
-        Number(
-          adjustment.wins_delta
-        ) || 0
-
-      target.losses +=
-        Number(
-          adjustment.losses_delta
-        ) || 0
-
-      target.pushes +=
-        Number(
-          adjustment.pushes_delta
-        ) || 0
-
-      recalculateWinPct(
-        target
-      )
-    }
-
-    // --------------------------------------------------
-    // 9. PREVENT NEGATIVE RECORDS
-    // --------------------------------------------------
-
-    const invalidRecord =
-      [
-        playerOneRecord,
-        playerTwoRecord,
-      ].find(
-        (record) =>
-          record.wins < 0 ||
-          record.losses < 0 ||
-          record.pushes < 0
-      )
-
-    if (invalidRecord) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            'An approved adjustment produced a negative record. Fix it before finalizing the week.',
-        },
-        { status: 400 }
-      )
-    }
-
-    // --------------------------------------------------
-    // 10. DETERMINE NEXT FIRST PICKER
+    // DETERMINE NEXT WEEK FIRST PICKER
     //
-    // Worse winning percentage goes first.
+    // Worse record picks first.
+    // Pushes do not affect winning percentage.
     //
-    // Tie:
-    // whoever picked second this week
-    // goes first next week.
+    // If tied:
+    // Whoever picked second this week gets first next week.
     // --------------------------------------------------
+
+    const firstRecord =
+      records[0]
+
+    const secondRecord =
+      records[1]
 
     let nextFirstPickerId:
       string
 
-    let decisionReason:
-      string
-
     if (
-      playerOneRecord.winPct <
-      playerTwoRecord.winPct
+      firstRecord.winPct <
+      secondRecord.winPct
     ) {
       nextFirstPickerId =
-        playerOneRecord.playerId
-
-      decisionReason =
-        'Worse weekly winning percentage'
+        firstRecord.playerId
     } else if (
-      playerTwoRecord.winPct <
-      playerOneRecord.winPct
+      secondRecord.winPct <
+      firstRecord.winPct
     ) {
       nextFirstPickerId =
-        playerTwoRecord.playerId
-
-      decisionReason =
-        'Worse weekly winning percentage'
+        secondRecord.playerId
     } else {
-      const secondPicker =
+      const playerWhoPickedSecond =
         players.find(
           (player) =>
             player.id !==
             currentWeek.first_picker_id
         )
 
-      if (!secondPicker) {
+      if (!playerWhoPickedSecond) {
         throw new Error(
-          'Unable to determine tie-break draft order.'
+          'Unable to determine the next first picker.'
         )
       }
 
       nextFirstPickerId =
-        secondPicker.id
-
-      decisionReason =
-        'Records tied; previous second picker moves to first'
+        playerWhoPickedSecond.id
     }
 
     // --------------------------------------------------
-    // 11. NEXT WEEK NUMBER
+    // MAKE SURE NEXT WEEK DOES NOT ALREADY EXIST
     // --------------------------------------------------
 
     const nextWeekNumber =
-      currentWeek.week_number + 1
-
-    // --------------------------------------------------
-    // 12. MAKE SURE NEXT WEEK DOES NOT EXIST
-    // --------------------------------------------------
+      currentWeek.week_number +
+      1
 
     const {
       data: existingNextWeek,
-      error: existingError,
+      error:
+        existingNextWeekError,
     } = await supabase
       .from('weeks')
-      .select(`
-        id,
-        week_number,
-        status
-      `)
+      .select('id')
       .eq(
         'season_id',
         currentWeek.season_id
@@ -461,9 +426,11 @@ export async function POST() {
       )
       .maybeSingle()
 
-    if (existingError) {
+    if (
+      existingNextWeekError
+    ) {
       throw new Error(
-        existingError.message
+        existingNextWeekError.message
       )
     }
 
@@ -479,13 +446,10 @@ export async function POST() {
     }
 
     // --------------------------------------------------
-    // 13. CREATE NEXT WEEK WINDOW
+    // NEXT WEEK WINDOW
     //
-    // Current Week 1:
-    // Tue Sep 1 -> Tue Sep 8
-    //
-    // Week 2 becomes:
-    // Tue Sep 8 -> Tue Sep 15
+    // For now the next week starts when the current
+    // week ends and runs exactly seven days.
     // --------------------------------------------------
 
     const nextStartsAt =
@@ -504,15 +468,12 @@ export async function POST() {
       )
 
     // --------------------------------------------------
-    // 14. CREATE NEXT WEEK
-    //
-    // IMPORTANT:
-    // New week becomes ACTIVE immediately.
+    // CREATE NEXT WEEK
     // --------------------------------------------------
 
     const {
-      data: newWeek,
-      error: createError,
+      data: nextWeek,
+      error: nextWeekError,
     } = await supabase
       .from('weeks')
       .insert({
@@ -544,18 +505,19 @@ export async function POST() {
       `)
       .single()
 
-    if (createError) {
+    if (nextWeekError) {
       throw new Error(
-        createError.message
+        nextWeekError.message
       )
     }
 
     // --------------------------------------------------
-    // 15. CLOSE OLD WEEK
+    // CLOSE CURRENT WEEK
     // --------------------------------------------------
 
     const {
-      error: closeError,
+      error:
+        closeWeekError,
     } = await supabase
       .from('weeks')
       .update({
@@ -567,39 +529,21 @@ export async function POST() {
         currentWeek.id
       )
 
-    if (closeError) {
-      // Roll back the new week if
-      // closing the old week fails.
+    // If closing the old week fails, remove
+    // the new week so we do not leave two active weeks.
+    if (closeWeekError) {
       await supabase
         .from('weeks')
         .delete()
         .eq(
           'id',
-          newWeek.id
+          nextWeek.id
         )
 
       throw new Error(
-        closeError.message
+        closeWeekError.message
       )
     }
-
-    // --------------------------------------------------
-    // 16. RESPONSE DETAILS
-    // --------------------------------------------------
-
-    const playerOne =
-      players.find(
-        (player) =>
-          player.id ===
-          playerOneRecord.playerId
-      )
-
-    const playerTwo =
-      players.find(
-        (player) =>
-          player.id ===
-          playerTwoRecord.playerId
-      )
 
     const nextFirstPicker =
       players.find(
@@ -611,68 +555,39 @@ export async function POST() {
     return NextResponse.json({
       success: true,
 
-      completedWeek:
-        currentWeek.week_number,
+      message:
+        `Week ${currentWeek.week_number} finalized by ${loggedInPlayer.name}. Week ${nextWeekNumber} is now active.`,
 
-      records: [
-        {
-          player:
-            playerOne?.name,
+      finalizedBy: {
+        id:
+          loggedInPlayer.id,
 
-          wins:
-            playerOneRecord.wins,
-
-          losses:
-            playerOneRecord.losses,
-
-          pushes:
-            playerOneRecord.pushes,
-
-          winPct:
-            playerOneRecord.winPct,
-        },
-
-        {
-          player:
-            playerTwo?.name,
-
-          wins:
-            playerTwoRecord.wins,
-
-          losses:
-            playerTwoRecord.losses,
-
-          pushes:
-            playerTwoRecord.pushes,
-
-          winPct:
-            playerTwoRecord.winPct,
-        },
-      ],
-
-      approvedAdjustments:
-        adjustments?.length ??
-        0,
-
-      nextWeek: {
-        weekNumber:
-          newWeek.week_number,
-
-        status:
-          newWeek.status,
-
-        startsAt:
-          newWeek.starts_at,
-
-        endsAt:
-          newWeek.ends_at,
-
-        firstPicker:
-          nextFirstPicker?.name,
+        name:
+          loggedInPlayer.name,
       },
 
-      reason:
-        decisionReason,
+      records,
+
+      nextWeek: {
+        id:
+          nextWeek.id,
+
+        weekNumber:
+          nextWeek.week_number,
+
+        startsAt:
+          nextWeek.starts_at,
+
+        endsAt:
+          nextWeek.ends_at,
+
+        firstPickerId:
+          nextFirstPickerId,
+
+        firstPickerName:
+          nextFirstPicker?.name ??
+          'Unknown',
+      },
     })
   } catch (error) {
     console.error(
@@ -687,7 +602,7 @@ export async function POST() {
         error:
           error instanceof Error
             ? error.message
-            : 'Unknown rollover error.',
+            : 'Unable to finalize week.',
       },
       { status: 500 }
     )
