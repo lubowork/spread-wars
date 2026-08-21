@@ -1,21 +1,99 @@
 import { NextResponse } from 'next/server'
+import { createClient } from '../../../../lib/supabase-server'
 import { createAdminClient } from '../../../../lib/supabase-admin'
 
 export async function GET() {
   try {
-    const supabase = createAdminClient()
+    // --------------------------------------------------
+    // REQUIRE LOGIN
+    // --------------------------------------------------
+
+    const authSupabase =
+      await createClient()
+
+    const {
+      data: { user },
+      error: userError,
+    } =
+      await authSupabase.auth.getUser()
+
+    if (userError || !user) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'You must be signed in.',
+        },
+        { status: 401 }
+      )
+    }
+
+    const supabase =
+      createAdminClient()
+
+    // --------------------------------------------------
+    // LOGGED-IN PLAYER
+    // --------------------------------------------------
+
+    const {
+      data: loggedInPlayer,
+      error:
+        loggedInPlayerError,
+    } = await supabase
+      .from('players')
+      .select(`
+        id,
+        name
+      `)
+      .eq(
+        'auth_user_id',
+        user.id
+      )
+      .maybeSingle()
+
+    if (
+      loggedInPlayerError
+    ) {
+      throw new Error(
+        loggedInPlayerError.message
+      )
+    }
+
+    if (!loggedInPlayer) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Your login is not linked to a Spread Wars player.',
+        },
+        { status: 403 }
+      )
+    }
+
+    // --------------------------------------------------
+    // ALL PLAYERS
+    // --------------------------------------------------
 
     const {
       data: players,
       error: playersError,
     } = await supabase
       .from('players')
-      .select('id, name')
+      .select(`
+        id,
+        name
+      `)
       .order('name')
 
     if (playersError) {
-      throw new Error(playersError.message)
+      throw new Error(
+        playersError.message
+      )
     }
+
+    // --------------------------------------------------
+    // ACTIVE WEEK
+    // --------------------------------------------------
 
     const {
       data: week,
@@ -29,31 +107,54 @@ export async function GET() {
         starts_at,
         ends_at
       `)
-      .eq('status', 'active')
-      .order('week_number', {
-        ascending: false,
-      })
+      .eq(
+        'status',
+        'active'
+      )
+      .order(
+        'week_number',
+        {
+          ascending: false,
+        }
+      )
       .limit(1)
       .maybeSingle()
 
     if (weekError) {
-      throw new Error(weekError.message)
+      throw new Error(
+        weekError.message
+      )
     }
 
     if (!week) {
       return NextResponse.json({
         success: true,
-        players: players ?? [],
-        week: null,
-        adjustments: [],
+
+        loggedInPlayer,
+
+        players:
+          players ?? [],
+
+        week:
+          null,
+
+        adjustments:
+          [],
       })
     }
 
+    // --------------------------------------------------
+    // ADJUSTMENTS FOR ACTIVE WEEK
+    // --------------------------------------------------
+
     const {
       data: adjustments,
-      error: adjustmentsError,
+      error:
+        adjustmentsError,
     } = await supabase
-      .from('result_adjustments')
+      .from(
+        'result_adjustments'
+      )
       .select(`
         id,
         target_player_id,
@@ -65,16 +166,26 @@ export async function GET() {
         status,
         created_at
       `)
-      .eq('week_id', week.id)
-      .order('created_at', {
-        ascending: false,
-      })
+      .eq(
+        'week_id',
+        week.id
+      )
+      .order(
+        'created_at',
+        {
+          ascending: false,
+        }
+      )
 
     if (adjustmentsError) {
       throw new Error(
         adjustmentsError.message
       )
     }
+
+    // --------------------------------------------------
+    // GET VOTES
+    // --------------------------------------------------
 
     const adjustmentIds =
       (adjustments ?? []).map(
@@ -88,12 +199,17 @@ export async function GET() {
       vote: string
     }[] = []
 
-    if (adjustmentIds.length > 0) {
+    if (
+      adjustmentIds.length >
+      0
+    ) {
       const {
         data: voteData,
         error: voteError,
       } = await supabase
-        .from('adjustment_votes')
+        .from(
+          'adjustment_votes'
+        )
         .select(`
           adjustment_id,
           player_id,
@@ -110,8 +226,13 @@ export async function GET() {
         )
       }
 
-      votes = voteData ?? []
+      votes =
+        voteData ?? []
     }
+
+    // --------------------------------------------------
+    // ATTACH VOTES TO EACH ADJUSTMENT
+    // --------------------------------------------------
 
     const adjustmentsWithVotes =
       (adjustments ?? []).map(
@@ -127,10 +248,20 @@ export async function GET() {
         })
       )
 
+    // --------------------------------------------------
+    // RESPONSE
+    // --------------------------------------------------
+
     return NextResponse.json({
       success: true,
-      players: players ?? [],
+
+      loggedInPlayer,
+
+      players:
+        players ?? [],
+
       week,
+
       adjustments:
         adjustmentsWithVotes,
     })
@@ -147,7 +278,7 @@ export async function GET() {
         error:
           error instanceof Error
             ? error.message
-            : 'Unknown error',
+            : 'Unable to load admin data.',
       },
       { status: 500 }
     )

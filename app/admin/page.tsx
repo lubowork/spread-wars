@@ -11,6 +11,11 @@ type Player = {
   name: string
 }
 
+type LoggedInPlayer = {
+  id: string
+  name: string
+}
+
 type Week = {
   id: string
   week_number: number
@@ -65,6 +70,14 @@ export default function AdminPage() {
   const [players, setPlayers] =
     useState<Player[]>([])
 
+  const [
+    loggedInPlayer,
+    setLoggedInPlayer,
+  ] =
+    useState<LoggedInPlayer | null>(
+      null
+    )
+
   const [week, setWeek] =
     useState<Week | null>(null)
 
@@ -77,12 +90,6 @@ export default function AdminPage() {
   const [
     targetPlayerId,
     setTargetPlayerId,
-  ] =
-    useState('')
-
-  const [
-    requestedByPlayerId,
-    setRequestedByPlayerId,
   ] =
     useState('')
 
@@ -125,10 +132,6 @@ export default function AdminPage() {
   const [loading, setLoading] =
     useState(false)
 
-  // --------------------------------------------------
-  // LOAD ADMIN DATA
-  // --------------------------------------------------
-
   async function loadData() {
     try {
       const response =
@@ -169,6 +172,11 @@ export default function AdminPage() {
         data.players ?? []
       )
 
+      setLoggedInPlayer(
+        data.loggedInPlayer ??
+          null
+      )
+
       setWeek(
         data.week ?? null
       )
@@ -199,12 +207,6 @@ export default function AdminPage() {
             current ||
             data.players[0].id
         )
-
-        setRequestedByPlayerId(
-          (current) =>
-            current ||
-            data.players[0].id
-        )
       }
     } catch (error) {
       setMessage(
@@ -218,10 +220,6 @@ export default function AdminPage() {
   useEffect(() => {
     loadData()
   }, [])
-
-  // --------------------------------------------------
-  // GENERIC SYSTEM ACTION
-  // --------------------------------------------------
 
   async function runAction(
     url: string,
@@ -284,10 +282,6 @@ export default function AdminPage() {
     }
   }
 
-  // --------------------------------------------------
-  // UPDATE WEEK WINDOW
-  // --------------------------------------------------
-
   async function updateWeekWindow(
     event: FormEvent
   ) {
@@ -301,30 +295,9 @@ export default function AdminPage() {
       return
     }
 
-    if (
-      !weekStartsAt ||
-      !weekEndsAt
-    ) {
-      setMessage(
-        'Start and end dates are required.'
-      )
-
-      return
-    }
-
     try {
       setLoading(true)
       setMessage('')
-
-      const startsAt =
-        new Date(
-          weekStartsAt
-        ).toISOString()
-
-      const endsAt =
-        new Date(
-          weekEndsAt
-        ).toISOString()
 
       const response =
         await fetch(
@@ -342,27 +315,21 @@ export default function AdminPage() {
                 weekId:
                   week.id,
 
-                startsAt,
-                endsAt,
+                startsAt:
+                  new Date(
+                    weekStartsAt
+                  ).toISOString(),
+
+                endsAt:
+                  new Date(
+                    weekEndsAt
+                  ).toISOString(),
               }),
           }
         )
 
-      const responseText =
-        await response.text()
-
-      let data: any
-
-      try {
-        data =
-          JSON.parse(
-            responseText
-          )
-      } catch {
-        throw new Error(
-          `Unexpected response (${response.status}).`
-        )
-      }
+      const data =
+        await response.json()
 
       if (
         !response.ok ||
@@ -391,20 +358,12 @@ export default function AdminPage() {
     }
   }
 
-  // --------------------------------------------------
-  // SUBMIT ADJUSTMENT
-  // --------------------------------------------------
-
   async function submitAdjustment(
     event: FormEvent
   ) {
     event.preventDefault()
 
     if (!week) {
-      setMessage(
-        'No active week.'
-      )
-
       return
     }
 
@@ -430,43 +389,19 @@ export default function AdminPage() {
 
                 targetPlayerId,
 
-                requestedByPlayerId,
+                winsDelta,
 
-                winsDelta:
-                  Number(
-                    winsDelta
-                  ),
+                lossesDelta,
 
-                lossesDelta:
-                  Number(
-                    lossesDelta
-                  ),
-
-                pushesDelta:
-                  Number(
-                    pushesDelta
-                  ),
+                pushesDelta,
 
                 reason,
               }),
           }
         )
 
-      const responseText =
-        await response.text()
-
-      let data: any
-
-      try {
-        data =
-          JSON.parse(
-            responseText
-          )
-      } catch {
-        throw new Error(
-          `Unexpected response (${response.status}).`
-        )
-      }
+      const data =
+        await response.json()
 
       if (
         !response.ok ||
@@ -478,13 +413,14 @@ export default function AdminPage() {
         )
       }
 
-      setReason('')
       setWinsDelta(0)
       setLossesDelta(0)
       setPushesDelta(0)
+      setReason('')
 
       setMessage(
-        'Adjustment request created.'
+        data.message ||
+          'Adjustment created.'
       )
 
       await loadData()
@@ -499,13 +435,8 @@ export default function AdminPage() {
     }
   }
 
-  // --------------------------------------------------
-  // VOTE
-  // --------------------------------------------------
-
   async function vote(
     adjustmentId: string,
-    playerId: string,
     voteValue:
       | 'yes'
       | 'no'
@@ -528,28 +459,14 @@ export default function AdminPage() {
             body:
               JSON.stringify({
                 adjustmentId,
-                playerId,
                 vote:
                   voteValue,
               }),
           }
         )
 
-      const responseText =
-        await response.text()
-
-      let data: any
-
-      try {
-        data =
-          JSON.parse(
-            responseText
-          )
-      } catch {
-        throw new Error(
-          `Unexpected response (${response.status}).`
-        )
-      }
+      const data =
+        await response.json()
 
       if (
         !response.ok ||
@@ -562,7 +479,8 @@ export default function AdminPage() {
       }
 
       setMessage(
-        'Vote recorded.'
+        data.message ||
+          'Vote recorded.'
       )
 
       await loadData()
@@ -588,60 +506,63 @@ export default function AdminPage() {
     )
   }
 
-  // --------------------------------------------------
-  // PAGE
-  // --------------------------------------------------
-
   return (
     <main className="min-h-screen bg-slate-950 p-6 text-white">
 
       <div className="mx-auto max-w-5xl">
 
-        {/* HEADER */}
+        <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
 
-        <div className="mb-8">
+          <div>
 
-          <a
-            href="/"
-            className="text-sm font-bold text-cyan-400 hover:text-cyan-300"
-          >
-            ← Back to Spread Wars
-          </a>
+            <a
+              href="/"
+              className="text-sm font-bold text-cyan-400"
+            >
+              ← Back to Spread Wars
+            </a>
 
-          <h1 className="mt-5 text-4xl font-black">
-            Spread Wars Admin
-          </h1>
+            <h1 className="mt-5 text-4xl font-black">
+              Spread Wars Admin
+            </h1>
 
-          <p className="mt-1 text-slate-400">
-            Week{' '}
-            {week?.week_number ??
-              '—'}{' '}
-            ·{' '}
-            {week?.status ??
-              'No active week'}
-          </p>
+            <p className="mt-1 text-slate-400">
+              Week{' '}
+              {week?.week_number ??
+                '—'}
+            </p>
+
+          </div>
+
+          {loggedInPlayer && (
+            <div className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3">
+
+              <div className="text-xs uppercase text-slate-500">
+                Signed In
+              </div>
+
+              <div className="font-black text-emerald-400">
+                {
+                  loggedInPlayer.name
+                }
+              </div>
+
+            </div>
+          )}
 
         </div>
 
-        {/* MESSAGE */}
-
         {message && (
-          <div className="mb-6 rounded-xl border border-slate-700 bg-slate-900 p-4 text-sm">
+          <div className="mb-6 rounded-xl border border-slate-700 bg-slate-900 p-4">
             {message}
           </div>
         )}
-
-        {/* WEEK GAME WINDOW */}
 
         <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
 
           <h2 className="text-xl font-black">
             Week Game Window
           </h2>
-
-          <p className="mt-2 text-sm text-slate-400">
-            Only games inside this time window appear on the draft board and qualify for the automatic Penn State and Miami picks.
-          </p>
 
           <form
             onSubmit={
@@ -651,8 +572,9 @@ export default function AdminPage() {
           >
 
             <div>
-              <label className="mb-2 block text-sm font-bold text-slate-300">
-                Week Starts
+
+              <label className="mb-2 block text-sm font-bold">
+                Starts
               </label>
 
               <input
@@ -664,17 +586,18 @@ export default function AdminPage() {
                   event
                 ) =>
                   setWeekStartsAt(
-                    event.target
-                      .value
+                    event.target.value
                   )
                 }
-                className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
+                className="w-full rounded-xl bg-white px-4 py-3 text-slate-950"
               />
+
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-bold text-slate-300">
-                Week Ends
+
+              <label className="mb-2 block text-sm font-bold">
+                Ends
               </label>
 
               <input
@@ -686,12 +609,12 @@ export default function AdminPage() {
                   event
                 ) =>
                   setWeekEndsAt(
-                    event.target
-                      .value
+                    event.target.value
                   )
                 }
-                className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
+                className="w-full rounded-xl bg-white px-4 py-3 text-slate-950"
               />
+
             </div>
 
             <div className="md:col-span-2">
@@ -699,8 +622,7 @@ export default function AdminPage() {
               <button
                 type="submit"
                 disabled={
-                  loading ||
-                  !week
+                  loading
                 }
                 className="rounded-xl bg-emerald-500 px-5 py-3 font-black text-slate-950 disabled:opacity-50"
               >
@@ -713,22 +635,15 @@ export default function AdminPage() {
 
         </section>
 
-        {/* SYSTEM ACTIONS */}
-
         <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
 
           <h2 className="text-xl font-black">
-            System Actions
+            System
           </h2>
 
-          <p className="mt-2 text-sm text-slate-400">
-            Scheduled jobs now handle odds, automatic picks, and results. These buttons are mainly for troubleshooting.
-          </p>
-
-          <div className="mt-6 grid gap-3 md:grid-cols-2">
+          <div className="mt-5 flex flex-wrap gap-3">
 
             <button
-              type="button"
               onClick={() =>
                 runAction(
                   '/api/sync',
@@ -736,13 +651,12 @@ export default function AdminPage() {
                 )
               }
               disabled={loading}
-              className="rounded-xl bg-cyan-600 px-4 py-4 font-black hover:bg-cyan-500 disabled:opacity-50"
+              className="rounded-xl bg-slate-800 px-4 py-3 font-bold"
             >
-              Sync DraftKings Odds
+              Sync Odds
             </button>
 
             <button
-              type="button"
               onClick={() =>
                 runAction(
                   '/api/automatic-picks',
@@ -750,13 +664,12 @@ export default function AdminPage() {
                 )
               }
               disabled={loading}
-              className="rounded-xl bg-violet-600 px-4 py-4 font-black hover:bg-violet-500 disabled:opacity-50"
+              className="rounded-xl bg-slate-800 px-4 py-3 font-bold"
             >
-              Refresh Automatic Picks
+              Automatic Picks
             </button>
 
             <button
-              type="button"
               onClick={() =>
                 runAction(
                   '/api/results',
@@ -764,13 +677,12 @@ export default function AdminPage() {
                 )
               }
               disabled={loading}
-              className="rounded-xl bg-emerald-600 px-4 py-4 font-black hover:bg-emerald-500 disabled:opacity-50"
+              className="rounded-xl bg-slate-800 px-4 py-3 font-bold"
             >
-              Check Results
+              Grade Results
             </button>
 
             <button
-              type="button"
               onClick={() =>
                 runAction(
                   '/api/rollover',
@@ -778,7 +690,7 @@ export default function AdminPage() {
                 )
               }
               disabled={loading}
-              className="rounded-xl bg-orange-600 px-4 py-4 font-black hover:bg-orange-500 disabled:opacity-50"
+              className="rounded-xl bg-red-900/50 px-4 py-3 font-bold text-red-200"
             >
               Finalize Week
             </button>
@@ -787,8 +699,6 @@ export default function AdminPage() {
 
         </section>
 
-        {/* REQUEST ADJUSTMENT */}
-
         <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
 
           <h2 className="text-xl font-black">
@@ -796,7 +706,11 @@ export default function AdminPage() {
           </h2>
 
           <p className="mt-2 text-sm text-slate-400">
-            Both players must approve before an adjustment counts.
+            The request will automatically be recorded as coming from{' '}
+            <strong>
+              {loggedInPlayer?.name ??
+                'the signed-in player'}
+            </strong>.
           </p>
 
           <form
@@ -806,206 +720,123 @@ export default function AdminPage() {
             className="mt-6 space-y-5"
           >
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div>
 
-              <div>
+              <label className="mb-2 block text-sm font-bold">
+                Adjust Player
+              </label>
 
-                <label className="mb-2 block text-sm font-bold text-slate-300">
-                  Adjust Player
-                </label>
+              <select
+                value={
+                  targetPlayerId
+                }
+                onChange={(
+                  event
+                ) =>
+                  setTargetPlayerId(
+                    event.target.value
+                  )
+                }
+                className="w-full rounded-xl bg-white px-4 py-3 text-slate-950"
+              >
 
-                <select
-                  value={
-                    targetPlayerId
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setTargetPlayerId(
-                      event.target
-                        .value
-                    )
-                  }
-                  className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
-                >
+                {players.map(
+                  (player) => (
+                    <option
+                      key={
+                        player.id
+                      }
+                      value={
+                        player.id
+                      }
+                    >
+                      {
+                        player.name
+                      }
+                    </option>
+                  )
+                )}
 
-                  {players.map(
-                    (player) => (
-                      <option
-                        key={
-                          player.id
-                        }
-                        value={
-                          player.id
-                        }
-                      >
-                        {
-                          player.name
-                        }
-                      </option>
-                    )
-                  )}
-
-                </select>
-
-              </div>
-
-              <div>
-
-                <label className="mb-2 block text-sm font-bold text-slate-300">
-                  Requested By
-                </label>
-
-                <select
-                  value={
-                    requestedByPlayerId
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setRequestedByPlayerId(
-                      event.target
-                        .value
-                    )
-                  }
-                  className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
-                >
-
-                  {players.map(
-                    (player) => (
-                      <option
-                        key={
-                          player.id
-                        }
-                        value={
-                          player.id
-                        }
-                      >
-                        {
-                          player.name
-                        }
-                      </option>
-                    )
-                  )}
-
-                </select>
-
-              </div>
+              </select>
 
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">
 
-              <div>
-
-                <label className="mb-2 block text-sm font-bold text-slate-300">
-                  Wins Change
-                </label>
-
-                <input
-                  type="number"
-                  value={
-                    winsDelta
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setWinsDelta(
-                      Number(
-                        event.target
-                          .value
-                      )
-                    )
-                  }
-                  className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
-                />
-
-              </div>
-
-              <div>
-
-                <label className="mb-2 block text-sm font-bold text-slate-300">
-                  Losses Change
-                </label>
-
-                <input
-                  type="number"
-                  value={
-                    lossesDelta
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setLossesDelta(
-                      Number(
-                        event.target
-                          .value
-                      )
-                    )
-                  }
-                  className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
-                />
-
-              </div>
-
-              <div>
-
-                <label className="mb-2 block text-sm font-bold text-slate-300">
-                  Pushes Change
-                </label>
-
-                <input
-                  type="number"
-                  value={
-                    pushesDelta
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setPushesDelta(
-                      Number(
-                        event.target
-                          .value
-                      )
-                    )
-                  }
-                  className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
-                />
-
-              </div>
-
-            </div>
-
-            <div>
-
-              <label className="mb-2 block text-sm font-bold text-slate-300">
-                Reason
-              </label>
-
-              <textarea
-                required
-                value={reason}
+              <input
+                type="number"
+                value={
+                  winsDelta
+                }
                 onChange={(
                   event
                 ) =>
-                  setReason(
-                    event.target
-                      .value
+                  setWinsDelta(
+                    Number(
+                      event.target.value
+                    )
                   )
                 }
-                className="min-h-24 w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
-                placeholder="Why is this adjustment needed?"
+                placeholder="Wins"
+                className="rounded-xl bg-white px-4 py-3 text-slate-950"
+              />
+
+              <input
+                type="number"
+                value={
+                  lossesDelta
+                }
+                onChange={(
+                  event
+                ) =>
+                  setLossesDelta(
+                    Number(
+                      event.target.value
+                    )
+                  )
+                }
+                placeholder="Losses"
+                className="rounded-xl bg-white px-4 py-3 text-slate-950"
+              />
+
+              <input
+                type="number"
+                value={
+                  pushesDelta
+                }
+                onChange={(
+                  event
+                ) =>
+                  setPushesDelta(
+                    Number(
+                      event.target.value
+                    )
+                  )
+                }
+                placeholder="Pushes"
+                className="rounded-xl bg-white px-4 py-3 text-slate-950"
               />
 
             </div>
 
+            <textarea
+              required
+              value={reason}
+              onChange={(
+                event
+              ) =>
+                setReason(
+                  event.target.value
+                )
+              }
+              placeholder="Reason"
+              className="min-h-24 w-full rounded-xl bg-white px-4 py-3 text-slate-950"
+            />
+
             <button
               type="submit"
-              disabled={
-                loading ||
-                !week
-              }
-              className="rounded-xl bg-cyan-500 px-5 py-3 font-black text-slate-950 disabled:opacity-50"
+              disabled={loading}
+              className="rounded-xl bg-cyan-500 px-5 py-3 font-black text-slate-950"
             >
               Submit Adjustment
             </button>
@@ -1014,210 +845,126 @@ export default function AdminPage() {
 
         </section>
 
-        {/* ADJUSTMENT VOTES */}
-
         <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
 
           <h2 className="text-xl font-black">
             Adjustment Votes
           </h2>
 
-          <p className="mt-2 text-sm text-slate-400">
-            Two YES votes approve an adjustment. Any NO vote rejects it.
-          </p>
-
           {adjustments.length ===
           0 ? (
-            <p className="mt-6 text-slate-500">
+            <p className="mt-5 text-slate-500">
               No adjustment requests.
             </p>
           ) : (
-            <div className="mt-6 space-y-4">
+            <div className="mt-5 space-y-4">
 
               {adjustments.map(
-                (adjustment) => (
-                  <div
-                    key={
-                      adjustment.id
-                    }
-                    className="rounded-xl border border-slate-700 bg-slate-800 p-5"
-                  >
+                (adjustment) => {
+                  const myVote =
+                    adjustment.adjustment_votes.find(
+                      (item) =>
+                        item.player_id ===
+                        loggedInPlayer?.id
+                    )
 
-                    <div className="flex flex-wrap items-start justify-between gap-4">
+                  return (
+                    <div
+                      key={
+                        adjustment.id
+                      }
+                      className="rounded-xl bg-slate-800 p-5"
+                    >
 
-                      <div>
-
-                        <div className="text-lg font-black">
-                          {playerName(
-                            adjustment.target_player_id
-                          )}
-                        </div>
-
-                        <div className="mt-1 text-sm text-slate-400">
-                          Requested by{' '}
-                          {playerName(
-                            adjustment.requested_by_player_id
-                          )}
-                        </div>
-
-                        <div className="mt-3 text-sm">
-
-                          Wins{' '}
-                          {Number(
-                            adjustment.wins_delta
-                          ) >= 0
-                            ? '+'
-                            : ''}
-                          {
-                            adjustment.wins_delta
-                          }
-
-                          {' · '}
-
-                          Losses{' '}
-                          {Number(
-                            adjustment.losses_delta
-                          ) >= 0
-                            ? '+'
-                            : ''}
-                          {
-                            adjustment.losses_delta
-                          }
-
-                          {' · '}
-
-                          Pushes{' '}
-                          {Number(
-                            adjustment.pushes_delta
-                          ) >= 0
-                            ? '+'
-                            : ''}
-                          {
-                            adjustment.pushes_delta
-                          }
-
-                        </div>
-
-                        <div className="mt-3 text-sm text-slate-300">
-                          {
-                            adjustment.reason
-                          }
-                        </div>
-
+                      <div className="font-black">
+                        {playerName(
+                          adjustment.target_player_id
+                        )}
                       </div>
 
-                      <div
-                        className={`rounded-full px-3 py-1 text-xs font-black uppercase ${
-                          adjustment.status ===
-                          'approved'
-                            ? 'bg-emerald-950 text-emerald-400'
-                            : adjustment.status ===
-                              'rejected'
-                            ? 'bg-red-950 text-red-400'
-                            : 'bg-slate-950 text-slate-300'
-                        }`}
-                      >
+                      <div className="mt-1 text-sm text-slate-400">
+                        Requested by{' '}
+                        {playerName(
+                          adjustment.requested_by_player_id
+                        )}
+                      </div>
+
+                      <div className="mt-3">
+                        W{' '}
+                        {
+                          adjustment.wins_delta
+                        }{' '}
+                        · L{' '}
+                        {
+                          adjustment.losses_delta
+                        }{' '}
+                        · P{' '}
+                        {
+                          adjustment.pushes_delta
+                        }
+                      </div>
+
+                      <div className="mt-2 text-sm">
+                        {
+                          adjustment.reason
+                        }
+                      </div>
+
+                      <div className="mt-4 text-xs font-bold uppercase text-slate-400">
+                        Status:{' '}
                         {
                           adjustment.status
                         }
                       </div>
 
-                    </div>
-
-                    <div className="mt-5 grid gap-3 md:grid-cols-2">
-
-                      {players.map(
-                        (player) => {
-                          const existingVote =
-                            adjustment.adjustment_votes.find(
-                              (vote) =>
-                                vote.player_id ===
-                                player.id
-                            )
-
-                          return (
-                            <div
-                              key={
-                                player.id
-                              }
-                              className="rounded-xl bg-slate-900 p-4"
-                            >
-
-                              <div className="mb-3 flex items-center justify-between">
-
-                                <strong>
-                                  {
-                                    player.name
-                                  }
-                                </strong>
-
-                                <span
-                                  className={`text-sm font-bold uppercase ${
-                                    existingVote?.vote ===
-                                    'yes'
-                                      ? 'text-emerald-400'
-                                      : existingVote?.vote ===
-                                        'no'
-                                      ? 'text-red-400'
-                                      : 'text-slate-500'
-                                  }`}
-                                >
-                                  {existingVote?.vote ??
-                                    'No vote'}
-                                </span>
-
-                              </div>
-
-                              {adjustment.status ===
-                                'pending' && (
-                                <div className="flex gap-2">
-
-                                  <button
-                                    type="button"
-                                    disabled={
-                                      loading
-                                    }
-                                    onClick={() =>
-                                      vote(
-                                        adjustment.id,
-                                        player.id,
-                                        'yes'
-                                      )
-                                    }
-                                    className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-black hover:bg-emerald-600 disabled:opacity-50"
-                                  >
-                                    YES
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    disabled={
-                                      loading
-                                    }
-                                    onClick={() =>
-                                      vote(
-                                        adjustment.id,
-                                        player.id,
-                                        'no'
-                                      )
-                                    }
-                                    className="rounded-lg bg-red-800 px-4 py-2 text-sm font-black hover:bg-red-700 disabled:opacity-50"
-                                  >
-                                    NO
-                                  </button>
-
-                                </div>
-                              )}
-
-                            </div>
-                          )
-                        }
+                      {myVote && (
+                        <div className="mt-2 text-sm text-slate-400">
+                          Your vote:{' '}
+                          <strong className="uppercase">
+                            {
+                              myVote.vote
+                            }
+                          </strong>
+                        </div>
                       )}
 
-                    </div>
+                      {adjustment.status ===
+                        'pending' &&
+                        !myVote && (
+                          <div className="mt-4 flex gap-2">
 
-                  </div>
-                )
+                            <button
+                              onClick={() =>
+                                vote(
+                                  adjustment.id,
+                                  'yes'
+                                )
+                              }
+                              disabled={loading}
+                              className="rounded-lg bg-emerald-700 px-4 py-2 font-bold"
+                            >
+                              YES
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                vote(
+                                  adjustment.id,
+                                  'no'
+                                )
+                              }
+                              disabled={loading}
+                              className="rounded-lg bg-red-800 px-4 py-2 font-bold"
+                            >
+                              NO
+                            </button>
+
+                          </div>
+                        )}
+
+                    </div>
+                  )
+                }
               )}
 
             </div>
