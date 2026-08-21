@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import webpush from 'web-push'
-import { createClient } from '../../../../lib/supabase-server'
-import { createAdminClient } from '../../../../lib/supabase-admin'
+import { createClient } from '../../../../../lib/supabase-server'
+import { createAdminClient } from '../../../../../lib/supabase-admin'
 
 webpush.setVapidDetails(
   process.env.VAPID_SUBJECT!,
