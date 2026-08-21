@@ -7,6 +7,30 @@ import {
 export async function proxy(
   request: NextRequest
 ) {
+  const pathname =
+    request.nextUrl.pathname
+
+  // --------------------------------------------------
+  // CRON API ROUTES
+  //
+  // Supabase Cron is not a logged-in browser user.
+  // These routes authenticate themselves using
+  // CRON_SECRET, so let them pass through the proxy.
+  // --------------------------------------------------
+
+  const isCronRoute =
+    pathname === '/api/sync' ||
+    pathname === '/api/automatic-picks' ||
+    pathname === '/api/results'
+
+  if (isCronRoute) {
+    return NextResponse.next()
+  }
+
+  // --------------------------------------------------
+  // CREATE SUPABASE RESPONSE
+  // --------------------------------------------------
+
   let response =
     NextResponse.next({
       request,
@@ -26,7 +50,9 @@ export async function proxy(
             return request.cookies.getAll()
           },
 
-          setAll(cookiesToSet) {
+          setAll(
+            cookiesToSet
+          ) {
             cookiesToSet.forEach(
               ({
                 name,
@@ -62,23 +88,43 @@ export async function proxy(
       }
     )
 
+  // --------------------------------------------------
+  // CHECK LOGIN
+  // --------------------------------------------------
+
   const {
     data: { user },
   } =
     await supabase.auth.getUser()
 
-  const pathname =
-    request.nextUrl.pathname
+  // --------------------------------------------------
+  // PUBLIC ROUTES
+  // --------------------------------------------------
 
   const isLoginPage =
-    pathname.startsWith('/login')
+    pathname.startsWith(
+      '/login'
+    )
 
   const isAuthRoute =
-    pathname.startsWith('/auth')
+    pathname.startsWith(
+      '/auth'
+    )
 
   const isPublicAsset =
-    pathname.startsWith('/_next') ||
-    pathname === '/favicon.ico'
+    pathname.startsWith(
+      '/_next'
+    ) ||
+    pathname ===
+      '/favicon.ico' ||
+    pathname ===
+      '/sw.js' ||
+    pathname ===
+      '/manifest.webmanifest'
+
+  // --------------------------------------------------
+  // REDIRECT NON-LOGGED-IN USERS
+  // --------------------------------------------------
 
   if (
     !user &&
@@ -89,7 +135,8 @@ export async function proxy(
     const url =
       request.nextUrl.clone()
 
-    url.pathname = '/login'
+    url.pathname =
+      '/login'
 
     return NextResponse.redirect(
       url
