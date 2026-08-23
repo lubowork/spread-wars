@@ -509,7 +509,6 @@ export default function AdminPage() {
             body:
               JSON.stringify({
                 adjustmentId,
-
                 vote:
                   voteValue,
               }),
@@ -581,14 +580,7 @@ export default function AdminPage() {
 
           <div>
 
-            <a
-              href="/"
-              className="text-sm font-bold text-cyan-400 hover:text-cyan-300"
-            >
-              ← Back to Spread Wars
-            </a>
-
-            <h1 className="mt-5 text-3xl font-black sm:text-4xl">
+            <h1 className="text-3xl font-black sm:text-4xl">
               Spread Wars Admin
             </h1>
 
@@ -1205,6 +1197,19 @@ export default function AdminPage() {
           )}
 
         </section>
+
+        {/* BOTTOM BACK BUTTON */}
+
+        <div className="mt-8 pb-8">
+
+          <a
+            href="/"
+            className="flex min-h-14 w-full items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 px-5 py-4 text-center text-base font-black text-white transition hover:bg-slate-800"
+          >
+            ← Back to Spread Wars
+          </a>
+
+        </div>
 
       </div>
 
