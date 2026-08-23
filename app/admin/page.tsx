@@ -295,6 +295,17 @@ export default function AdminPage() {
       return
     }
 
+    if (
+      !weekStartsAt ||
+      !weekEndsAt
+    ) {
+      setMessage(
+        'Start and end times are required.'
+      )
+
+      return
+    }
+
     try {
       setLoading(true)
       setMessage('')
@@ -328,8 +339,21 @@ export default function AdminPage() {
           }
         )
 
-      const data =
-        await response.json()
+      const responseText =
+        await response.text()
+
+      let data: any
+
+      try {
+        data =
+          JSON.parse(
+            responseText
+          )
+      } catch {
+        throw new Error(
+          `Unexpected response (${response.status}).`
+        )
+      }
 
       if (
         !response.ok ||
@@ -364,6 +388,10 @@ export default function AdminPage() {
     event.preventDefault()
 
     if (!week) {
+      setMessage(
+        'No active week was found.'
+      )
+
       return
     }
 
@@ -389,19 +417,41 @@ export default function AdminPage() {
 
                 targetPlayerId,
 
-                winsDelta,
+                winsDelta:
+                  Number(
+                    winsDelta
+                  ),
 
-                lossesDelta,
+                lossesDelta:
+                  Number(
+                    lossesDelta
+                  ),
 
-                pushesDelta,
+                pushesDelta:
+                  Number(
+                    pushesDelta
+                  ),
 
                 reason,
               }),
           }
         )
 
-      const data =
-        await response.json()
+      const responseText =
+        await response.text()
+
+      let data: any
+
+      try {
+        data =
+          JSON.parse(
+            responseText
+          )
+      } catch {
+        throw new Error(
+          `Unexpected response (${response.status}).`
+        )
+      }
 
       if (
         !response.ok ||
@@ -420,7 +470,7 @@ export default function AdminPage() {
 
       setMessage(
         data.message ||
-          'Adjustment created.'
+          'Adjustment request created.'
       )
 
       await loadData()
@@ -459,14 +509,28 @@ export default function AdminPage() {
             body:
               JSON.stringify({
                 adjustmentId,
+
                 vote:
                   voteValue,
               }),
           }
         )
 
-      const data =
-        await response.json()
+      const responseText =
+        await response.text()
+
+      let data: any
+
+      try {
+        data =
+          JSON.parse(
+            responseText
+          )
+      } catch {
+        throw new Error(
+          `Unexpected response (${response.status}).`
+        )
+      }
 
       if (
         !response.ok ||
@@ -507,9 +571,11 @@ export default function AdminPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 p-6 text-white">
+    <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6">
 
       <div className="mx-auto max-w-5xl">
+
+        {/* HEADER */}
 
         <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
 
@@ -517,12 +583,12 @@ export default function AdminPage() {
 
             <a
               href="/"
-              className="text-sm font-bold text-cyan-400"
+              className="text-sm font-bold text-cyan-400 hover:text-cyan-300"
             >
               ← Back to Spread Wars
             </a>
 
-            <h1 className="mt-5 text-4xl font-black">
+            <h1 className="mt-5 text-3xl font-black sm:text-4xl">
               Spread Wars Admin
             </h1>
 
@@ -552,17 +618,25 @@ export default function AdminPage() {
 
         </div>
 
+        {/* MESSAGE */}
+
         {message && (
-          <div className="mb-6 rounded-xl border border-slate-700 bg-slate-900 p-4">
+          <div className="mb-6 rounded-xl border border-slate-700 bg-slate-900 p-4 text-sm">
             {message}
           </div>
         )}
 
-        <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+        {/* WEEK WINDOW */}
+
+        <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:p-6">
 
           <h2 className="text-xl font-black">
             Week Game Window
           </h2>
+
+          <p className="mt-2 text-sm text-slate-400">
+            Only games inside this window appear on the draft board and qualify for automatic Penn State and Miami picks.
+          </p>
 
           <form
             onSubmit={
@@ -573,7 +647,7 @@ export default function AdminPage() {
 
             <div>
 
-              <label className="mb-2 block text-sm font-bold">
+              <label className="mb-2 block text-sm font-bold text-slate-300">
                 Starts
               </label>
 
@@ -589,14 +663,14 @@ export default function AdminPage() {
                     event.target.value
                   )
                 }
-                className="w-full rounded-xl bg-white px-4 py-3 text-slate-950"
+                className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
               />
 
             </div>
 
             <div>
 
-              <label className="mb-2 block text-sm font-bold">
+              <label className="mb-2 block text-sm font-bold text-slate-300">
                 Ends
               </label>
 
@@ -612,7 +686,7 @@ export default function AdminPage() {
                     event.target.value
                   )
                 }
-                className="w-full rounded-xl bg-white px-4 py-3 text-slate-950"
+                className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
               />
 
             </div>
@@ -622,9 +696,10 @@ export default function AdminPage() {
               <button
                 type="submit"
                 disabled={
-                  loading
+                  loading ||
+                  !week
                 }
-                className="rounded-xl bg-emerald-500 px-5 py-3 font-black text-slate-950 disabled:opacity-50"
+                className="w-full rounded-xl bg-emerald-500 px-5 py-3 font-black text-slate-950 disabled:opacity-50 sm:w-auto"
               >
                 Save Week Window
               </button>
@@ -635,15 +710,22 @@ export default function AdminPage() {
 
         </section>
 
-        <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+        {/* SYSTEM */}
+
+        <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:p-6">
 
           <h2 className="text-xl font-black">
             System
           </h2>
 
-          <div className="mt-5 flex flex-wrap gap-3">
+          <p className="mt-2 text-sm text-slate-400">
+            Odds, automatic picks, and results are handled automatically. These controls are mainly for troubleshooting.
+          </p>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
 
             <button
+              type="button"
               onClick={() =>
                 runAction(
                   '/api/sync',
@@ -651,12 +733,13 @@ export default function AdminPage() {
                 )
               }
               disabled={loading}
-              className="rounded-xl bg-slate-800 px-4 py-3 font-bold"
+              className="rounded-xl bg-slate-800 px-4 py-3 font-bold hover:bg-slate-700 disabled:opacity-50"
             >
               Sync Odds
             </button>
 
             <button
+              type="button"
               onClick={() =>
                 runAction(
                   '/api/automatic-picks',
@@ -664,12 +747,13 @@ export default function AdminPage() {
                 )
               }
               disabled={loading}
-              className="rounded-xl bg-slate-800 px-4 py-3 font-bold"
+              className="rounded-xl bg-slate-800 px-4 py-3 font-bold hover:bg-slate-700 disabled:opacity-50"
             >
               Automatic Picks
             </button>
 
             <button
+              type="button"
               onClick={() =>
                 runAction(
                   '/api/results',
@@ -677,12 +761,13 @@ export default function AdminPage() {
                 )
               }
               disabled={loading}
-              className="rounded-xl bg-slate-800 px-4 py-3 font-bold"
+              className="rounded-xl bg-slate-800 px-4 py-3 font-bold hover:bg-slate-700 disabled:opacity-50"
             >
               Grade Results
             </button>
 
             <button
+              type="button"
               onClick={() =>
                 runAction(
                   '/api/rollover',
@@ -690,7 +775,7 @@ export default function AdminPage() {
                 )
               }
               disabled={loading}
-              className="rounded-xl bg-red-900/50 px-4 py-3 font-bold text-red-200"
+              className="rounded-xl bg-red-900/60 px-4 py-3 font-bold text-red-100 hover:bg-red-800 disabled:opacity-50"
             >
               Finalize Week
             </button>
@@ -699,15 +784,17 @@ export default function AdminPage() {
 
         </section>
 
-        <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+        {/* REQUEST ADJUSTMENT */}
+
+        <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:p-6">
 
           <h2 className="text-xl font-black">
             Request Record Adjustment
           </h2>
 
           <p className="mt-2 text-sm text-slate-400">
-            The request will automatically be recorded as coming from{' '}
-            <strong>
+            This request will automatically be recorded as coming from{' '}
+            <strong className="text-slate-200">
               {loggedInPlayer?.name ??
                 'the signed-in player'}
             </strong>.
@@ -720,9 +807,11 @@ export default function AdminPage() {
             className="mt-6 space-y-5"
           >
 
+            {/* PLAYER */}
+
             <div>
 
-              <label className="mb-2 block text-sm font-bold">
+              <label className="mb-2 block text-sm font-bold text-slate-300">
                 Adjust Player
               </label>
 
@@ -737,7 +826,7 @@ export default function AdminPage() {
                     event.target.value
                   )
                 }
-                className="w-full rounded-xl bg-white px-4 py-3 text-slate-950"
+                className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
               >
 
                 {players.map(
@@ -761,82 +850,140 @@ export default function AdminPage() {
 
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
+            {/* RECORD CHANGES */}
 
-              <input
-                type="number"
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+
+              <div className="mb-4">
+
+                <h3 className="font-black">
+                  Record Changes
+                </h3>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Use positive or negative whole numbers.
+                </p>
+
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+
+                <div>
+
+                  <label className="mb-2 block text-sm font-bold text-slate-300">
+                    Wins Change
+                  </label>
+
+                  <input
+                    type="number"
+                    step="1"
+                    value={
+                      winsDelta
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setWinsDelta(
+                        Number(
+                          event.target.value
+                        )
+                      )
+                    }
+                    className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-lg font-bold text-slate-950"
+                  />
+
+                </div>
+
+                <div>
+
+                  <label className="mb-2 block text-sm font-bold text-slate-300">
+                    Losses Change
+                  </label>
+
+                  <input
+                    type="number"
+                    step="1"
+                    value={
+                      lossesDelta
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setLossesDelta(
+                        Number(
+                          event.target.value
+                        )
+                      )
+                    }
+                    className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-lg font-bold text-slate-950"
+                  />
+
+                </div>
+
+                <div>
+
+                  <label className="mb-2 block text-sm font-bold text-slate-300">
+                    Pushes Change
+                  </label>
+
+                  <input
+                    type="number"
+                    step="1"
+                    value={
+                      pushesDelta
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setPushesDelta(
+                        Number(
+                          event.target.value
+                        )
+                      )
+                    }
+                    className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-lg font-bold text-slate-950"
+                  />
+
+                </div>
+
+              </div>
+
+            </div>
+
+            {/* REASON */}
+
+            <div>
+
+              <label className="mb-2 block text-sm font-bold text-slate-300">
+                Reason
+              </label>
+
+              <textarea
+                required
                 value={
-                  winsDelta
+                  reason
                 }
                 onChange={(
                   event
                 ) =>
-                  setWinsDelta(
-                    Number(
-                      event.target.value
-                    )
+                  setReason(
+                    event.target.value
                   )
                 }
-                placeholder="Wins"
-                className="rounded-xl bg-white px-4 py-3 text-slate-950"
-              />
-
-              <input
-                type="number"
-                value={
-                  lossesDelta
-                }
-                onChange={(
-                  event
-                ) =>
-                  setLossesDelta(
-                    Number(
-                      event.target.value
-                    )
-                  )
-                }
-                placeholder="Losses"
-                className="rounded-xl bg-white px-4 py-3 text-slate-950"
-              />
-
-              <input
-                type="number"
-                value={
-                  pushesDelta
-                }
-                onChange={(
-                  event
-                ) =>
-                  setPushesDelta(
-                    Number(
-                      event.target.value
-                    )
-                  )
-                }
-                placeholder="Pushes"
-                className="rounded-xl bg-white px-4 py-3 text-slate-950"
+                placeholder="Why is this adjustment needed?"
+                className="min-h-28 w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
               />
 
             </div>
 
-            <textarea
-              required
-              value={reason}
-              onChange={(
-                event
-              ) =>
-                setReason(
-                  event.target.value
-                )
-              }
-              placeholder="Reason"
-              className="min-h-24 w-full rounded-xl bg-white px-4 py-3 text-slate-950"
-            />
-
             <button
               type="submit"
-              disabled={loading}
-              className="rounded-xl bg-cyan-500 px-5 py-3 font-black text-slate-950"
+              disabled={
+                loading ||
+                !week ||
+                !targetPlayerId
+              }
+              className="w-full rounded-xl bg-cyan-500 px-5 py-3 font-black text-slate-950 hover:bg-cyan-400 disabled:opacity-50 sm:w-auto"
             >
               Submit Adjustment
             </button>
@@ -845,11 +992,17 @@ export default function AdminPage() {
 
         </section>
 
-        <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+        {/* ADJUSTMENT VOTES */}
+
+        <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:p-6">
 
           <h2 className="text-xl font-black">
             Adjustment Votes
           </h2>
+
+          <p className="mt-2 text-sm text-slate-400">
+            Both players must vote YES for an adjustment to count. Any NO vote rejects it.
+          </p>
 
           {adjustments.length ===
           0 ? (
@@ -873,54 +1026,129 @@ export default function AdminPage() {
                       key={
                         adjustment.id
                       }
-                      className="rounded-xl bg-slate-800 p-5"
+                      className="rounded-2xl border border-slate-700 bg-slate-800 p-5"
                     >
 
-                      <div className="font-black">
-                        {playerName(
-                          adjustment.target_player_id
-                        )}
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+
+                        <div>
+
+                          <div className="text-lg font-black">
+                            {playerName(
+                              adjustment.target_player_id
+                            )}
+                          </div>
+
+                          <div className="mt-1 text-sm text-slate-400">
+                            Requested by{' '}
+                            {playerName(
+                              adjustment.requested_by_player_id
+                            )}
+                          </div>
+
+                        </div>
+
+                        <div
+                          className={`rounded-full px-3 py-1 text-xs font-black uppercase ${
+                            adjustment.status ===
+                            'approved'
+                              ? 'bg-emerald-950 text-emerald-400'
+                              : adjustment.status ===
+                                'rejected'
+                              ? 'bg-red-950 text-red-400'
+                              : 'bg-slate-950 text-slate-300'
+                          }`}
+                        >
+                          {
+                            adjustment.status
+                          }
+                        </div>
+
                       </div>
 
-                      <div className="mt-1 text-sm text-slate-400">
-                        Requested by{' '}
-                        {playerName(
-                          adjustment.requested_by_player_id
-                        )}
+                      <div className="mt-4 grid grid-cols-3 gap-2">
+
+                        <div className="rounded-xl bg-slate-900 p-3 text-center">
+
+                          <div className="text-xs uppercase text-slate-500">
+                            Wins
+                          </div>
+
+                          <div className="mt-1 text-lg font-black">
+                            {adjustment.wins_delta >=
+                            0
+                              ? '+'
+                              : ''}
+                            {
+                              adjustment.wins_delta
+                            }
+                          </div>
+
+                        </div>
+
+                        <div className="rounded-xl bg-slate-900 p-3 text-center">
+
+                          <div className="text-xs uppercase text-slate-500">
+                            Losses
+                          </div>
+
+                          <div className="mt-1 text-lg font-black">
+                            {adjustment.losses_delta >=
+                            0
+                              ? '+'
+                              : ''}
+                            {
+                              adjustment.losses_delta
+                            }
+                          </div>
+
+                        </div>
+
+                        <div className="rounded-xl bg-slate-900 p-3 text-center">
+
+                          <div className="text-xs uppercase text-slate-500">
+                            Pushes
+                          </div>
+
+                          <div className="mt-1 text-lg font-black">
+                            {adjustment.pushes_delta >=
+                            0
+                              ? '+'
+                              : ''}
+                            {
+                              adjustment.pushes_delta
+                            }
+                          </div>
+
+                        </div>
+
                       </div>
 
-                      <div className="mt-3">
-                        W{' '}
-                        {
-                          adjustment.wins_delta
-                        }{' '}
-                        · L{' '}
-                        {
-                          adjustment.losses_delta
-                        }{' '}
-                        · P{' '}
-                        {
-                          adjustment.pushes_delta
-                        }
-                      </div>
+                      <div className="mt-4 rounded-xl bg-slate-900 p-4">
 
-                      <div className="mt-2 text-sm">
-                        {
-                          adjustment.reason
-                        }
-                      </div>
+                        <div className="text-xs font-bold uppercase text-slate-500">
+                          Reason
+                        </div>
 
-                      <div className="mt-4 text-xs font-bold uppercase text-slate-400">
-                        Status:{' '}
-                        {
-                          adjustment.status
-                        }
+                        <div className="mt-1 text-sm text-slate-200">
+                          {
+                            adjustment.reason
+                          }
+                        </div>
+
                       </div>
 
                       {myVote && (
-                        <div className="mt-2 text-sm text-slate-400">
+                        <div className="mt-4 text-sm text-slate-400">
                           Your vote:{' '}
-                          <strong className="uppercase">
+                          <strong
+                            className={`uppercase ${
+                              myVote.vote ===
+                              'yes'
+                                ? 'text-emerald-400'
+                                : 'text-red-400'
+                            }`}
+                          >
                             {
                               myVote.vote
                             }
@@ -931,30 +1159,36 @@ export default function AdminPage() {
                       {adjustment.status ===
                         'pending' &&
                         !myVote && (
-                          <div className="mt-4 flex gap-2">
+                          <div className="mt-4 grid grid-cols-2 gap-3">
 
                             <button
+                              type="button"
                               onClick={() =>
                                 vote(
                                   adjustment.id,
                                   'yes'
                                 )
                               }
-                              disabled={loading}
-                              className="rounded-lg bg-emerald-700 px-4 py-2 font-bold"
+                              disabled={
+                                loading
+                              }
+                              className="rounded-xl bg-emerald-700 px-4 py-3 font-black hover:bg-emerald-600 disabled:opacity-50"
                             >
                               YES
                             </button>
 
                             <button
+                              type="button"
                               onClick={() =>
                                 vote(
                                   adjustment.id,
                                   'no'
                                 )
                               }
-                              disabled={loading}
-                              className="rounded-lg bg-red-800 px-4 py-2 font-bold"
+                              disabled={
+                                loading
+                              }
+                              className="rounded-xl bg-red-800 px-4 py-3 font-black hover:bg-red-700 disabled:opacity-50"
                             >
                               NO
                             </button>
