@@ -21,9 +21,15 @@ self.addEventListener('push', function (event) {
           data.body ||
           'You have a new Spread Wars notification.',
 
+        // Full-color icon shown inside
+        // the expanded notification.
         icon: '/icon-192.png',
 
-        badge: '/icon-192.png',
+        // Transparent monochrome icon used
+        // by Android in the status bar.
+        badge: '/icon-badge.png',
+
+        tag: 'spread-wars-turn',
 
         data: {
           url: data.url || '/',
