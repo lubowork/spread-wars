@@ -49,9 +49,34 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 px-4 py-8 text-white">
+    <main className="relative min-h-screen overflow-hidden bg-slate-950 text-white">
 
-      <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-md items-center justify-center">
+      {/* WALLPAPER */}
+
+      <div className="absolute inset-0">
+
+        <Image
+          src="/login-wallpaper.png"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover object-center"
+        />
+
+      </div>
+
+      {/* DARK OVERLAY */}
+
+      <div className="absolute inset-0 bg-slate-950/55" />
+
+      {/* EXTRA CENTER GRADIENT FOR READABILITY */}
+
+      <div className="absolute inset-0 bg-gradient-to-b from-slate-950/25 via-slate-950/40 to-slate-950/80" />
+
+      {/* LOGIN CONTENT */}
+
+      <div className="relative z-10 mx-auto flex min-h-screen max-w-md items-center justify-center px-4 py-8 sm:px-6">
 
         <div className="w-full">
 
@@ -67,20 +92,20 @@ export default function LoginPage() {
                 width={112}
                 height={112}
                 priority
-                className="rounded-3xl shadow-2xl shadow-black/40"
+                className="rounded-3xl shadow-2xl shadow-black/50"
               />
 
             </div>
 
-            <h1 className="text-4xl font-black tracking-tight">
+            <h1 className="text-4xl font-black tracking-tight drop-shadow-lg sm:text-5xl">
               Spread Wars
             </h1>
 
-            <p className="mt-2 text-sm font-bold uppercase tracking-[0.2em] text-cyan-400">
+            <p className="mt-2 text-sm font-black uppercase tracking-[0.22em] text-cyan-300 drop-shadow">
               College Football
             </p>
 
-            <p className="mt-3 text-slate-400">
+            <p className="mt-3 font-bold text-white/90 drop-shadow">
               Geoff vs. General
             </p>
 
@@ -88,7 +113,7 @@ export default function LoginPage() {
 
           {/* LOGIN CARD */}
 
-          <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-2xl shadow-black/20 sm:p-8">
+          <div className="rounded-3xl border border-white/10 bg-slate-950/80 p-6 shadow-2xl shadow-black/50 backdrop-blur-md sm:p-8">
 
             <div>
 
@@ -96,7 +121,7 @@ export default function LoginPage() {
                 Sign In
               </h2>
 
-              <p className="mt-2 text-sm text-slate-400">
+              <p className="mt-2 text-sm text-slate-300">
                 Enter your Spread Wars account to continue.
               </p>
 
@@ -113,7 +138,7 @@ export default function LoginPage() {
 
                 <label
                   htmlFor="email"
-                  className="mb-2 block text-sm font-bold text-slate-300"
+                  className="mb-2 block text-sm font-bold text-slate-200"
                 >
                   Email
                 </label>
@@ -130,7 +155,7 @@ export default function LoginPage() {
                     )
                   }
                   disabled={loading}
-                  className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-base text-slate-950 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/30 disabled:opacity-60"
+                  className="w-full rounded-xl border border-white/15 bg-white px-4 py-3 text-base text-slate-950 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/30 disabled:opacity-60"
                 />
 
               </div>
@@ -141,7 +166,7 @@ export default function LoginPage() {
 
                 <label
                   htmlFor="password"
-                  className="mb-2 block text-sm font-bold text-slate-300"
+                  className="mb-2 block text-sm font-bold text-slate-200"
                 >
                   Password
                 </label>
@@ -158,7 +183,7 @@ export default function LoginPage() {
                     )
                   }
                   disabled={loading}
-                  className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-base text-slate-950 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/30 disabled:opacity-60"
+                  className="w-full rounded-xl border border-white/15 bg-white px-4 py-3 text-base text-slate-950 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/30 disabled:opacity-60"
                 />
 
               </div>
@@ -168,7 +193,7 @@ export default function LoginPage() {
               {message && (
                 <div
                   role="alert"
-                  className="rounded-xl border border-red-900 bg-red-950/40 p-4 text-sm text-red-300"
+                  className="rounded-xl border border-red-800/70 bg-red-950/70 p-4 text-sm text-red-200"
                 >
                   {message}
                 </div>
@@ -190,7 +215,7 @@ export default function LoginPage() {
 
           </div>
 
-          <p className="mt-6 text-center text-xs text-slate-600">
+          <p className="mt-6 text-center text-xs font-medium text-white/60 drop-shadow">
             DraftKings spreads · College Football only
           </p>
 
