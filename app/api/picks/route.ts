@@ -3,36 +3,70 @@ import webpush from 'web-push'
 import { createClient } from '../../../lib/supabase-server'
 import { createAdminClient } from '../../../lib/supabase-admin'
 
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT!,
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!
-)
+function configureWebPush() {
+  const subject =
+    process.env.VAPID_SUBJECT
 
-export async function POST(request: Request) {
+  const publicKey =
+    process.env
+      .NEXT_PUBLIC_VAPID_PUBLIC_KEY
+
+  const privateKey =
+    process.env
+      .VAPID_PRIVATE_KEY
+
+  if (
+    !subject ||
+    !publicKey ||
+    !privateKey
+  ) {
+    throw new Error(
+      'Push notification VAPID configuration is incomplete.'
+    )
+  }
+
+  webpush.setVapidDetails(
+    subject,
+    publicKey,
+    privateKey
+  )
+}
+
+export async function POST(
+  request: Request
+) {
   try {
     // --------------------------------------------------
     // 1. VERIFY LOGGED-IN USER
     // --------------------------------------------------
 
-    const authSupabase = await createClient()
+    const authSupabase =
+      await createClient()
 
     const {
       data: { user },
       error: userError,
-    } = await authSupabase.auth.getUser()
+    } =
+      await authSupabase.auth.getUser()
 
-    if (userError || !user) {
+    if (
+      userError ||
+      !user
+    ) {
       return NextResponse.json(
         {
           success: false,
-          error: 'You must be signed in to make a pick.',
+          error:
+            'You must be signed in to make a pick.',
         },
-        { status: 401 }
+        {
+          status: 401,
+        }
       )
     }
 
-    const supabase = createAdminClient()
+    const supabase =
+      createAdminClient()
 
     // --------------------------------------------------
     // 2. FIND LOGGED-IN PLAYER
@@ -48,11 +82,16 @@ export async function POST(request: Request) {
         name,
         auth_user_id
       `)
-      .eq('auth_user_id', user.id)
+      .eq(
+        'auth_user_id',
+        user.id
+      )
       .maybeSingle()
 
     if (playerError) {
-      throw new Error(playerError.message)
+      throw new Error(
+        playerError.message
+      )
     }
 
     if (!loggedInPlayer) {
@@ -62,7 +101,9 @@ export async function POST(request: Request) {
           error:
             'Your account is not linked to a Spread Wars player.',
         },
-        { status: 403 }
+        {
+          status: 403,
+        }
       )
     }
 
@@ -70,7 +111,8 @@ export async function POST(request: Request) {
     // 3. READ REQUEST
     // --------------------------------------------------
 
-    const body = await request.json()
+    const body =
+      await request.json()
 
     const {
       weekId,
@@ -79,14 +121,20 @@ export async function POST(request: Request) {
       team,
     } = body
 
-    if (!weekId || !gameId || !team) {
+    if (
+      !weekId ||
+      !gameId ||
+      !team
+    ) {
       return NextResponse.json(
         {
           success: false,
           error:
             'weekId, gameId, and team are required.',
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       )
     }
 
@@ -96,7 +144,8 @@ export async function POST(request: Request) {
 
     if (
       playerId &&
-      playerId !== loggedInPlayer.id
+      playerId !==
+        loggedInPlayer.id
     ) {
       return NextResponse.json(
         {
@@ -104,7 +153,9 @@ export async function POST(request: Request) {
           error:
             `You are signed in as ${loggedInPlayer.name}. You cannot submit a pick for another player.`,
         },
-        { status: 403 }
+        {
+          status: 403,
+        }
       )
     }
 
@@ -122,31 +173,44 @@ export async function POST(request: Request) {
         first_picker_id,
         status
       `)
-      .eq('id', weekId)
+      .eq(
+        'id',
+        weekId
+      )
       .maybeSingle()
 
     if (weekError) {
-      throw new Error(weekError.message)
+      throw new Error(
+        weekError.message
+      )
     }
 
     if (!week) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Week not found.',
+          error:
+            'Week not found.',
         },
-        { status: 404 }
+        {
+          status: 404,
+        }
       )
     }
 
-    if (week.status !== 'active') {
+    if (
+      week.status !==
+      'active'
+    ) {
       return NextResponse.json(
         {
           success: false,
           error:
             'This week is not currently active.',
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       )
     }
 
@@ -166,38 +230,54 @@ export async function POST(request: Request) {
       .order('name')
 
     if (playersError) {
-      throw new Error(playersError.message)
+      throw new Error(
+        playersError.message
+      )
     }
 
-    if (!players || players.length !== 2) {
+    if (
+      !players ||
+      players.length !== 2
+    ) {
       return NextResponse.json(
         {
           success: false,
           error:
             'Spread Wars requires exactly two players.',
         },
-        { status: 500 }
+        {
+          status: 500,
+        }
       )
     }
 
-    const firstPicker = players.find(
-      (player) =>
-        player.id === week.first_picker_id
-    )
+    const firstPicker =
+      players.find(
+        (player) =>
+          player.id ===
+          week.first_picker_id
+      )
 
-    const secondPicker = players.find(
-      (player) =>
-        player.id !== week.first_picker_id
-    )
+    const secondPicker =
+      players.find(
+        (player) =>
+          player.id !==
+          week.first_picker_id
+      )
 
-    if (!firstPicker || !secondPicker) {
+    if (
+      !firstPicker ||
+      !secondPicker
+    ) {
       return NextResponse.json(
         {
           success: false,
           error:
             'Unable to determine draft order.',
         },
-        { status: 500 }
+        {
+          status: 500,
+        }
       )
     }
 
@@ -217,20 +297,28 @@ export async function POST(request: Request) {
         start_time,
         completed
       `)
-      .eq('id', gameId)
+      .eq(
+        'id',
+        gameId
+      )
       .maybeSingle()
 
     if (gameError) {
-      throw new Error(gameError.message)
+      throw new Error(
+        gameError.message
+      )
     }
 
     if (!game) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Game not found.',
+          error:
+            'Game not found.',
         },
-        { status: 404 }
+        {
+          status: 404,
+        }
       )
     }
 
@@ -239,11 +327,16 @@ export async function POST(request: Request) {
     // --------------------------------------------------
 
     const kickoff =
-      new Date(game.start_time).getTime()
+      new Date(
+        game.start_time
+      ).getTime()
 
     if (
-      Number.isNaN(kickoff) ||
-      kickoff <= Date.now()
+      Number.isNaN(
+        kickoff
+      ) ||
+      kickoff <=
+        Date.now()
     ) {
       return NextResponse.json(
         {
@@ -251,7 +344,9 @@ export async function POST(request: Request) {
           error:
             'This game has already started and can no longer be drafted.',
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       )
     }
 
@@ -262,7 +357,9 @@ export async function POST(request: Request) {
           error:
             'This game has already been completed.',
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       )
     }
 
@@ -271,8 +368,10 @@ export async function POST(request: Request) {
     // --------------------------------------------------
 
     if (
-      team !== game.home_team &&
-      team !== game.away_team
+      team !==
+        game.home_team &&
+      team !==
+        game.away_team
     ) {
       return NextResponse.json(
         {
@@ -280,7 +379,9 @@ export async function POST(request: Request) {
           error:
             'The selected team does not belong to this game.',
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       )
     }
 
@@ -300,14 +401,22 @@ export async function POST(request: Request) {
         game_id,
         is_automatic
       `)
-      .eq('week_id', week.id)
-      .order('pick_number')
+      .eq(
+        'week_id',
+        week.id
+      )
+      .order(
+        'pick_number'
+      )
 
     if (picksError) {
-      throw new Error(picksError.message)
+      throw new Error(
+        picksError.message
+      )
     }
 
-    const picks = existingPicks ?? []
+    const picks =
+      existingPicks ?? []
 
     // --------------------------------------------------
     // 11. GAME CAN ONLY BE USED ONCE
@@ -316,17 +425,22 @@ export async function POST(request: Request) {
     const gameAlreadyPicked =
       picks.some(
         (pick) =>
-          pick.game_id === game.id
+          pick.game_id ===
+          game.id
       )
 
-    if (gameAlreadyPicked) {
+    if (
+      gameAlreadyPicked
+    ) {
       return NextResponse.json(
         {
           success: false,
           error:
             'This game has already been drafted.',
         },
-        { status: 409 }
+        {
+          status: 409,
+        }
       )
     }
 
@@ -340,14 +454,19 @@ export async function POST(request: Request) {
           pick.is_automatic
       )
 
-    if (automaticPicks.length < 2) {
+    if (
+      automaticPicks.length <
+      2
+    ) {
       return NextResponse.json(
         {
           success: false,
           error:
             'The automatic Penn State and Miami picks must be created before normal drafting begins.',
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       )
     }
 
@@ -362,10 +481,13 @@ export async function POST(request: Request) {
       )
 
     const nextPickNumber =
-      normalPicks.length + 3
+      normalPicks.length +
+      3
 
     const expectedPlayer =
-      normalPicks.length % 2 === 0
+      normalPicks.length %
+        2 ===
+      0
         ? firstPicker
         : secondPicker
 
@@ -379,7 +501,9 @@ export async function POST(request: Request) {
           error:
             `It is ${expectedPlayer.name}'s turn. You are signed in as ${loggedInPlayer.name}.`,
         },
-        { status: 403 }
+        {
+          status: 403,
+        }
       )
     }
 
@@ -397,10 +521,22 @@ export async function POST(request: Request) {
         price,
         fetched_at
       `)
-      .eq('game_id', game.id)
-      .eq('team', team)
-      .eq('sportsbook', 'DraftKings')
-      .eq('market', 'spreads')
+      .eq(
+        'game_id',
+        game.id
+      )
+      .eq(
+        'team',
+        team
+      )
+      .eq(
+        'sportsbook',
+        'DraftKings'
+      )
+      .eq(
+        'market',
+        'spreads'
+      )
       .order(
         'fetched_at',
         {
@@ -411,7 +547,9 @@ export async function POST(request: Request) {
       .maybeSingle()
 
     if (oddsError) {
-      throw new Error(oddsError.message)
+      throw new Error(
+        oddsError.message
+      )
     }
 
     if (!latestOdds) {
@@ -421,21 +559,31 @@ export async function POST(request: Request) {
           error:
             'A current DraftKings spread could not be found for this team.',
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       )
     }
 
     const lockedSpread =
-      Number(latestOdds.spread)
+      Number(
+        latestOdds.spread
+      )
 
-    if (Number.isNaN(lockedSpread)) {
+    if (
+      Number.isNaN(
+        lockedSpread
+      )
+    ) {
       return NextResponse.json(
         {
           success: false,
           error:
             'The current DraftKings spread is invalid.',
         },
-        { status: 500 }
+        {
+          status: 500,
+        }
       )
     }
 
@@ -444,7 +592,8 @@ export async function POST(request: Request) {
     // --------------------------------------------------
 
     const now =
-      new Date().toISOString()
+      new Date()
+        .toISOString()
 
     const {
       data: newPick,
@@ -509,7 +658,8 @@ export async function POST(request: Request) {
 
     if (insertError) {
       if (
-        insertError.code === '23505'
+        insertError.code ===
+        '23505'
       ) {
         return NextResponse.json(
           {
@@ -517,7 +667,9 @@ export async function POST(request: Request) {
             error:
               'That pick was already taken. Refresh the draft board.',
           },
-          { status: 409 }
+          {
+            status: 409,
+          }
         )
       }
 
@@ -539,6 +691,8 @@ export async function POST(request: Request) {
     // --------------------------------------------------
     // 17. SEND PUSH NOTIFICATION
     //
+    // VAPID is configured HERE, at runtime.
+    //
     // Push failure must NEVER undo a valid pick.
     // --------------------------------------------------
 
@@ -548,9 +702,12 @@ export async function POST(request: Request) {
     try {
       const {
         data: subscriptions,
-        error: subscriptionError,
+        error:
+          subscriptionError,
       } = await supabase
-        .from('push_subscriptions')
+        .from(
+          'push_subscriptions'
+        )
         .select(`
           id,
           endpoint,
@@ -562,15 +719,22 @@ export async function POST(request: Request) {
           nextPlayer.id
         )
 
-      if (subscriptionError) {
+      if (
+        subscriptionError
+      ) {
         console.error(
           'Unable to load push subscriptions:',
           subscriptionError.message
         )
       } else if (
         subscriptions &&
-        subscriptions.length > 0
+        subscriptions.length >
+          0
       ) {
+        // Configure VAPID only if
+        // there is actually a push to send.
+        configureWebPush()
+
         const spreadText =
           lockedSpread > 0
             ? `+${lockedSpread}`
@@ -578,10 +742,14 @@ export async function POST(request: Request) {
 
         const payload =
           JSON.stringify({
-            title: 'Spread Wars',
+            title:
+              'Spread Wars',
+
             body:
               `${loggedInPlayer.name} picked ${team} ${spreadText}. ${nextPlayer.name}, you're on the clock.`,
-            url: '/',
+
+            url:
+              '/',
           })
 
         for (
@@ -589,24 +757,27 @@ export async function POST(request: Request) {
           subscriptions
         ) {
           try {
-            await webpush.sendNotification(
-              {
-                endpoint:
-                  subscription.endpoint,
+            await webpush
+              .sendNotification(
+                {
+                  endpoint:
+                    subscription.endpoint,
 
-                keys: {
-                  p256dh:
-                    subscription.p256dh,
+                  keys: {
+                    p256dh:
+                      subscription.p256dh,
 
-                  auth:
-                    subscription.auth,
+                    auth:
+                      subscription.auth,
+                  },
                 },
-              },
-              payload
-            )
+                payload
+              )
 
             pushSent++
-          } catch (pushError: any) {
+          } catch (
+            pushError: any
+          ) {
             pushFailed++
 
             console.error(
@@ -614,10 +785,11 @@ export async function POST(request: Request) {
               pushError
             )
 
-            // Delete dead/expired subscriptions
             if (
-              pushError?.statusCode === 404 ||
-              pushError?.statusCode === 410
+              pushError?.statusCode ===
+                404 ||
+              pushError?.statusCode ===
+                410
             ) {
               await supabase
                 .from(
@@ -688,7 +860,9 @@ export async function POST(request: Request) {
             ? error.message
             : 'Unknown error while making pick.',
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     )
   }
 }
