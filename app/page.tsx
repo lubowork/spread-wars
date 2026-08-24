@@ -218,6 +218,10 @@ export default async function HomePage() {
   const supabase =
     createAdminClient()
 
+  // --------------------------------------------------
+  // LOGGED-IN PLAYER
+  // --------------------------------------------------
+
   const {
     data: loggedInPlayer,
     error: loggedInPlayerError,
@@ -255,6 +259,10 @@ export default async function HomePage() {
     )
   }
 
+  // --------------------------------------------------
+  // PLAYERS
+  // --------------------------------------------------
+
   const {
     data: playersData,
     error: playersError,
@@ -275,6 +283,10 @@ export default async function HomePage() {
 
   const players =
     (playersData ?? []) as Player[]
+
+  // --------------------------------------------------
+  // ACTIVE WEEK
+  // --------------------------------------------------
 
   const {
     data: week,
@@ -372,6 +384,10 @@ export default async function HomePage() {
     )
   }
 
+  // --------------------------------------------------
+  // SEASON
+  // --------------------------------------------------
+
   const {
     data: season,
     error: seasonError,
@@ -392,6 +408,10 @@ export default async function HomePage() {
       seasonError.message
     )
   }
+
+  // --------------------------------------------------
+  // PICKS
+  // --------------------------------------------------
 
   const {
     data: picksData,
@@ -434,6 +454,10 @@ export default async function HomePage() {
   const picks =
     (picksData ?? []) as Pick[]
 
+  // --------------------------------------------------
+  // APPROVED ADJUSTMENTS
+  // --------------------------------------------------
+
   const {
     data: adjustmentsData,
     error: adjustmentsError,
@@ -465,10 +489,10 @@ export default async function HomePage() {
       []) as ApprovedAdjustment[]
 
   // --------------------------------------------------
-  // LOAD ALL GAMES IN THE WEEK WINDOW
+  // ALL GAMES IN ACTIVE WEEK
   //
-  // We intentionally include completed/started games
-  // here so the original first game day never changes.
+  // Include started/completed games here so the
+  // original first game day never changes.
   // --------------------------------------------------
 
   let gamesQuery =
@@ -543,7 +567,7 @@ export default async function HomePage() {
       : null
 
   // --------------------------------------------------
-  // ONLY FUTURE, UNFINISHED GAMES ARE DRAFTABLE
+  // FUTURE, UNFINISHED GAMES ONLY
   // --------------------------------------------------
 
   const now =
@@ -563,6 +587,10 @@ export default async function HomePage() {
       (game) =>
         game.id
     )
+
+  // --------------------------------------------------
+  // ODDS
+  // --------------------------------------------------
 
   let odds: Odd[] = []
 
@@ -656,6 +684,10 @@ export default async function HomePage() {
       })
     )
 
+  // --------------------------------------------------
+  // DRAFT ORDER
+  // --------------------------------------------------
+
   const normalPicks =
     picks.filter(
       (pick) =>
@@ -689,6 +721,10 @@ export default async function HomePage() {
         currentTurnPlayerId
     )
 
+  // --------------------------------------------------
+  // RECORDS
+  // --------------------------------------------------
+
   const playerRecords =
     players.map(
       (player) => ({
@@ -702,6 +738,10 @@ export default async function HomePage() {
           ),
       })
     )
+
+  // --------------------------------------------------
+  // AUTOMATIC PICKS
+  // --------------------------------------------------
 
   const automaticPicks =
     picks.filter(
@@ -719,10 +759,16 @@ export default async function HomePage() {
     )
   }
 
+  // --------------------------------------------------
+  // PAGE
+  // --------------------------------------------------
+
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6">
 
       <div className="mx-auto max-w-7xl">
+
+        {/* HEADER */}
 
         <header className="mb-8">
 
@@ -802,72 +848,157 @@ export default async function HomePage() {
           </div>
         )}
 
+        {/* PLAYER CARDS */}
+
         <section className="mb-6 grid gap-4 sm:grid-cols-2">
 
           {playerRecords.map(
             ({
               player,
               record,
-            }) => (
-              <div
-                key={
+            }) => {
+              const automaticPick =
+                automaticPickForPlayer(
                   player.id
-                }
-                className={`rounded-2xl border p-5 ${
-                  currentTurnPlayerId ===
-                  player.id
-                    ? 'border-cyan-500 bg-cyan-950/30'
-                    : 'border-slate-800 bg-slate-900'
-                }`}
-              >
+                )
 
-                <div className="flex items-start justify-between gap-4">
+              const automaticSpread =
+                automaticPick
+                  ? automaticPick.line_locked &&
+                    automaticPick.locked_spread !==
+                      null
+                    ? Number(
+                        automaticPick.locked_spread
+                      )
+                    : Number(
+                        automaticPick.spread
+                      )
+                  : null
 
-                  <div>
+              return (
+                <div
+                  key={
+                    player.id
+                  }
+                  className={`rounded-2xl border p-5 ${
+                    currentTurnPlayerId ===
+                    player.id
+                      ? 'border-cyan-500 bg-cyan-950/30'
+                      : 'border-slate-800 bg-slate-900'
+                  }`}
+                >
 
-                    <div className="text-2xl font-black">
-                      {
-                        player.name
-                      }
+                  {/* PLAYER NAME + ON THE CLOCK */}
+
+                  <div className="flex items-start justify-between gap-4">
+
+                    <div>
+
+                      <div className="text-2xl font-black">
+                        {
+                          player.name
+                        }
+                      </div>
+
+                      <div className="mt-1 text-sm text-slate-400">
+                        Auto:{' '}
+                        {
+                          player.automatic_team
+                        }
+                      </div>
+
                     </div>
 
-                    <div className="mt-1 text-sm text-slate-400">
-                      Auto:{' '}
-                      {
-                        player.automatic_team
-                      }
+                    {currentTurnPlayerId ===
+                      player.id && (
+                      <div className="shrink-0 rounded-full bg-cyan-500 px-3 py-1 text-xs font-black uppercase text-slate-950">
+                        On the clock
+                      </div>
+                    )}
+
+                  </div>
+
+                  {/* RECORD + AUTOMATIC PICK */}
+
+                  <div className="mt-5 grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
+
+                    {/* RECORD */}
+
+                    <div className="min-w-[92px]">
+
+                      <div className="text-3xl font-black">
+                        {record.wins}
+                        -
+                        {record.losses}
+                        -
+                        {record.pushes}
+                      </div>
+
+                      <div className="mt-1 text-xs uppercase tracking-wide text-slate-500">
+                        W-L-P
+                      </div>
+
+                    </div>
+
+                    {/* AUTOMATIC TEAM + SPREAD */}
+
+                    <div className="min-w-0 rounded-xl bg-slate-800 px-4 py-3">
+
+                      <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                        Automatic Pick
+                      </div>
+
+                      <div className="mt-1 truncate text-sm font-black text-white sm:whitespace-normal">
+                        {automaticPick
+                          ? automaticPick.team
+                          : player.automatic_team}
+                      </div>
+
+                      {automaticSpread !==
+                      null ? (
+                        <>
+                          <div className="mt-1 text-xl font-black text-cyan-400">
+                            {formatSpread(
+                              automaticSpread
+                            )}
+                          </div>
+
+                          <div className="mt-1 text-[10px] font-black uppercase tracking-wide">
+
+                            {automaticPick?.line_locked ? (
+                              <span className="text-emerald-400">
+                                Locked
+                              </span>
+                            ) : (
+                              <span className="text-amber-400">
+                                Current Line
+                              </span>
+                            )}
+
+                          </div>
+                        </>
+                      ) : (
+                        <div className="mt-2 text-xs text-slate-500">
+                          Waiting for DraftKings line
+                        </div>
+                      )}
+
                     </div>
 
                   </div>
 
-                  {currentTurnPlayerId ===
-                    player.id && (
-                    <div className="rounded-full bg-cyan-500 px-3 py-1 text-xs font-black uppercase text-slate-950">
-                      On the clock
-                    </div>
-                  )}
-
                 </div>
-
-                <div className="mt-5 text-3xl font-black">
-                  {record.wins}
-                  -
-                  {record.losses}
-                  -
-                  {record.pushes}
-                </div>
-
-                <div className="mt-1 text-xs uppercase tracking-wide text-slate-500">
-                  W-L-P
-                </div>
-
-              </div>
-            )
+              )
+            }
           )}
 
         </section>
 
+        {/* MAIN CONTENT + SIDEBAR */}
+
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+
+          {/* DRAFT BOARD */}
 
           <section>
 
@@ -918,83 +1049,11 @@ export default async function HomePage() {
 
           </section>
 
+          {/* SIDEBAR */}
+
           <aside className="space-y-6">
 
-            <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
-
-              <h2 className="text-xl font-black">
-                Automatic Picks
-              </h2>
-
-              <p className="mt-2 text-sm text-slate-400">
-                Picks #1 and #2. Lines lock exactly one hour before kickoff.
-              </p>
-
-              <div className="mt-5 space-y-4">
-
-                {players.map(
-                  (player) => {
-                    const pick =
-                      automaticPickForPlayer(
-                        player.id
-                      )
-
-                    return (
-                      <div
-                        key={
-                          player.id
-                        }
-                        className="rounded-xl bg-slate-800 p-4"
-                      >
-
-                        <div className="text-sm text-slate-400">
-                          {
-                            player.name
-                          }
-                        </div>
-
-                        <div className="mt-1 font-black">
-                          {pick
-                            ? pick.team
-                            : player.automatic_team}
-                        </div>
-
-                        {pick ? (
-                          <>
-                            <div className="mt-1 text-lg font-black text-cyan-400">
-                              {formatSpread(
-                                Number(
-                                  pick.spread
-                                )
-                              )}
-                            </div>
-
-                            <div className="mt-2 text-xs font-bold uppercase">
-                              {pick.line_locked ? (
-                                <span className="text-emerald-400">
-                                  Locked
-                                </span>
-                              ) : (
-                                <span className="text-amber-400">
-                                  Current line
-                                </span>
-                              )}
-                            </div>
-                          </>
-                        ) : (
-                          <div className="mt-2 text-sm text-slate-500">
-                            Waiting for DraftKings line
-                          </div>
-                        )}
-
-                      </div>
-                    )
-                  }
-                )}
-
-              </div>
-
-            </section>
+            {/* WEEK STATUS */}
 
             <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
 
@@ -1005,18 +1064,25 @@ export default async function HomePage() {
               <div className="mt-4 space-y-3 text-sm">
 
                 <div className="flex justify-between gap-4">
+
                   <span className="text-slate-400">
                     Week
                   </span>
+
                   <strong>
-                    {week.week_number}
+                    {
+                      week.week_number
+                    }
                   </strong>
+
                 </div>
 
                 <div className="flex justify-between gap-4">
+
                   <span className="text-slate-400">
                     First normal pick
                   </span>
+
                   <strong>
                     {
                       players.find(
@@ -1027,33 +1093,44 @@ export default async function HomePage() {
                       '—'
                     }
                   </strong>
+
                 </div>
 
                 <div className="flex justify-between gap-4">
+
                   <span className="text-slate-400">
                     Normal picks
                   </span>
+
                   <strong>
-                    {normalPicks.length}
+                    {
+                      normalPicks.length
+                    }
                   </strong>
+
                 </div>
 
                 <div className="flex justify-between gap-4">
+
                   <span className="text-slate-400">
                     Current turn
                   </span>
+
                   <strong className="text-cyan-400">
                     {
                       currentTurnPlayer?.name ??
                       '—'
                     }
                   </strong>
+
                 </div>
 
                 <div className="flex justify-between gap-4">
+
                   <span className="text-slate-400">
                     Later-day games
                   </span>
+
                   <strong
                     className={
                       week.allow_later_day_games
@@ -1065,11 +1142,14 @@ export default async function HomePage() {
                       ? 'Allowed'
                       : 'Locked'}
                   </strong>
+
                 </div>
 
               </div>
 
             </section>
+
+            {/* APPROVED ADJUSTMENTS */}
 
             {adjustments.length >
               0 && (
@@ -1105,12 +1185,15 @@ export default async function HomePage() {
                         </div>
 
                         <div className="mt-1 text-slate-400">
+
                           W{' '}
                           {adjustment.wins_delta >=
                           0
                             ? '+'
                             : ''}
-                          {adjustment.wins_delta}
+                          {
+                            adjustment.wins_delta
+                          }
 
                           {' · '}
 
@@ -1119,7 +1202,9 @@ export default async function HomePage() {
                           0
                             ? '+'
                             : ''}
-                          {adjustment.losses_delta}
+                          {
+                            adjustment.losses_delta
+                          }
 
                           {' · '}
 
@@ -1128,7 +1213,10 @@ export default async function HomePage() {
                           0
                             ? '+'
                             : ''}
-                          {adjustment.pushes_delta}
+                          {
+                            adjustment.pushes_delta
+                          }
+
                         </div>
 
                       </div>
@@ -1139,6 +1227,8 @@ export default async function HomePage() {
 
               </section>
             )}
+
+            {/* RULES */}
 
             <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
 
