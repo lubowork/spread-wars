@@ -32,6 +32,57 @@ function configureWebPush() {
   )
 }
 
+function getEasternDateKey(
+  isoDate: string
+) {
+  const formatter =
+    new Intl.DateTimeFormat(
+      'en-US',
+      {
+        timeZone:
+          'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }
+    )
+
+  const parts =
+    formatter.formatToParts(
+      new Date(isoDate)
+    )
+
+  const year =
+    parts.find(
+      (part) =>
+        part.type === 'year'
+    )?.value
+
+  const month =
+    parts.find(
+      (part) =>
+        part.type === 'month'
+    )?.value
+
+  const day =
+    parts.find(
+      (part) =>
+        part.type === 'day'
+    )?.value
+
+  if (
+    !year ||
+    !month ||
+    !day
+  ) {
+    throw new Error(
+      'Unable to determine game date.'
+    )
+  }
+
+  return `${year}-${month}-${day}`
+}
+
 export async function POST(
   request: Request
 ) {
@@ -160,7 +211,7 @@ export async function POST(
     }
 
     // --------------------------------------------------
-    // 5. GET WEEK
+    // 5. GET ACTIVE WEEK
     // --------------------------------------------------
 
     const {
@@ -171,7 +222,10 @@ export async function POST(
       .select(`
         id,
         first_picker_id,
-        status
+        status,
+        starts_at,
+        ends_at,
+        allow_later_day_games
       `)
       .eq(
         'id',
@@ -207,6 +261,22 @@ export async function POST(
           success: false,
           error:
             'This week is not currently active.',
+        },
+        {
+          status: 400,
+        }
+      )
+    }
+
+    if (
+      !week.starts_at ||
+      !week.ends_at
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'The active week does not have a complete game window configured.',
         },
         {
           status: 400,
@@ -282,7 +352,7 @@ export async function POST(
     }
 
     // --------------------------------------------------
-    // 7. GET GAME
+    // 7. GET SELECTED GAME
     // --------------------------------------------------
 
     const {
@@ -323,20 +393,66 @@ export async function POST(
     }
 
     // --------------------------------------------------
-    // 8. BLOCK PICKS AFTER KICKOFF
+    // 8. VERIFY GAME BELONGS TO ACTIVE WEEK WINDOW
     // --------------------------------------------------
 
-    const kickoff =
+    const gameKickoff =
       new Date(
         game.start_time
       ).getTime()
 
+    const weekStart =
+      new Date(
+        week.starts_at
+      ).getTime()
+
+    const weekEnd =
+      new Date(
+        week.ends_at
+      ).getTime()
+
     if (
-      Number.isNaN(
-        kickoff
-      ) ||
-      kickoff <=
-        Date.now()
+      Number.isNaN(gameKickoff) ||
+      Number.isNaN(weekStart) ||
+      Number.isNaN(weekEnd)
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Invalid week or game date.',
+        },
+        {
+          status: 500,
+        }
+      )
+    }
+
+    if (
+      gameKickoff <
+        weekStart ||
+      gameKickoff >=
+        weekEnd
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'This game is outside the active week window.',
+        },
+        {
+          status: 400,
+        }
+      )
+    }
+
+    // --------------------------------------------------
+    // 9. BLOCK PICKS AFTER KICKOFF
+    // --------------------------------------------------
+
+    if (
+      gameKickoff <=
+      Date.now()
     ) {
       return NextResponse.json(
         {
@@ -364,7 +480,7 @@ export async function POST(
     }
 
     // --------------------------------------------------
-    // 9. VERIFY TEAM BELONGS TO GAME
+    // 10. VERIFY TEAM BELONGS TO GAME
     // --------------------------------------------------
 
     if (
@@ -386,7 +502,94 @@ export async function POST(
     }
 
     // --------------------------------------------------
-    // 10. GET EXISTING PICKS
+    // 11. ENFORCE FIRST-GAME-DAY RULE
+    //
+    // IMPORTANT:
+    // We find the earliest game in the ENTIRE week
+    // window, including games that already started
+    // or finished.
+    //
+    // This prevents Friday from suddenly becoming
+    // the "first game day" after Thursday has passed.
+    // --------------------------------------------------
+
+    if (
+      !week.allow_later_day_games
+    ) {
+      const {
+        data: firstWeekGame,
+        error: firstWeekGameError,
+      } = await supabase
+        .from('games')
+        .select(`
+          id,
+          start_time
+        `)
+        .gte(
+          'start_time',
+          week.starts_at
+        )
+        .lt(
+          'start_time',
+          week.ends_at
+        )
+        .order(
+          'start_time',
+          {
+            ascending: true,
+          }
+        )
+        .limit(1)
+        .maybeSingle()
+
+      if (firstWeekGameError) {
+        throw new Error(
+          firstWeekGameError.message
+        )
+      }
+
+      if (!firstWeekGame) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              'No games were found inside the active week window.',
+          },
+          {
+            status: 400,
+          }
+        )
+      }
+
+      const firstGameDay =
+        getEasternDateKey(
+          firstWeekGame.start_time
+        )
+
+      const selectedGameDay =
+        getEasternDateKey(
+          game.start_time
+        )
+
+      if (
+        selectedGameDay !==
+        firstGameDay
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              'Later-day games are currently locked. Enable Allow Later-Day Games in Admin to draft this game.',
+          },
+          {
+            status: 403,
+          }
+        )
+      }
+    }
+
+    // --------------------------------------------------
+    // 12. GET EXISTING PICKS
     // --------------------------------------------------
 
     const {
@@ -419,7 +622,7 @@ export async function POST(
       existingPicks ?? []
 
     // --------------------------------------------------
-    // 11. GAME CAN ONLY BE USED ONCE
+    // 13. GAME CAN ONLY BE USED ONCE
     // --------------------------------------------------
 
     const gameAlreadyPicked =
@@ -445,7 +648,7 @@ export async function POST(
     }
 
     // --------------------------------------------------
-    // 12. AUTOMATIC PICKS MUST EXIST FIRST
+    // 14. AUTOMATIC PICKS MUST EXIST FIRST
     // --------------------------------------------------
 
     const automaticPicks =
@@ -471,7 +674,7 @@ export async function POST(
     }
 
     // --------------------------------------------------
-    // 13. DETERMINE WHOSE TURN IT IS
+    // 15. DETERMINE WHOSE TURN IT IS
     // --------------------------------------------------
 
     const normalPicks =
@@ -508,7 +711,7 @@ export async function POST(
     }
 
     // --------------------------------------------------
-    // 14. GET LATEST DRAFTKINGS SPREAD
+    // 16. GET LATEST DRAFTKINGS SPREAD
     // --------------------------------------------------
 
     const {
@@ -588,7 +791,7 @@ export async function POST(
     }
 
     // --------------------------------------------------
-    // 15. SAVE PICK
+    // 17. SAVE PICK
     // --------------------------------------------------
 
     const now =
@@ -679,7 +882,7 @@ export async function POST(
     }
 
     // --------------------------------------------------
-    // 16. DETERMINE NEXT PLAYER
+    // 18. DETERMINE NEXT PLAYER
     // --------------------------------------------------
 
     const nextPlayer =
@@ -689,9 +892,7 @@ export async function POST(
         : firstPicker
 
     // --------------------------------------------------
-    // 17. SEND PUSH NOTIFICATION
-    //
-    // VAPID is configured HERE, at runtime.
+    // 19. SEND PUSH NOTIFICATION
     //
     // Push failure must NEVER undo a valid pick.
     // --------------------------------------------------
@@ -731,8 +932,6 @@ export async function POST(
         subscriptions.length >
           0
       ) {
-        // Configure VAPID only if
-        // there is actually a push to send.
         configureWebPush()
 
         const spreadText =
@@ -812,7 +1011,7 @@ export async function POST(
     }
 
     // --------------------------------------------------
-    // 18. RESPONSE
+    // 20. RESPONSE
     // --------------------------------------------------
 
     const spreadText =

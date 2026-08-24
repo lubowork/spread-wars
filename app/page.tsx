@@ -2,7 +2,6 @@ import { redirect } from 'next/navigation'
 import { createClient } from '../lib/supabase-server'
 import { createAdminClient } from '../lib/supabase-admin'
 import DraftBoard from './components/DraftBoard'
-import NotificationButton from './components/NotificationButton'
 
 type Player = {
   id: string
@@ -137,6 +136,72 @@ function formatSpread(
   return `${spread}`
 }
 
+function getEasternDateKey(
+  isoDate: string
+) {
+  const formatter =
+    new Intl.DateTimeFormat(
+      'en-US',
+      {
+        timeZone:
+          'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }
+    )
+
+  const parts =
+    formatter.formatToParts(
+      new Date(isoDate)
+    )
+
+  const year =
+    parts.find(
+      (part) =>
+        part.type === 'year'
+    )?.value
+
+  const month =
+    parts.find(
+      (part) =>
+        part.type === 'month'
+    )?.value
+
+  const day =
+    parts.find(
+      (part) =>
+        part.type === 'day'
+    )?.value
+
+  if (
+    !year ||
+    !month ||
+    !day
+  ) {
+    return null
+  }
+
+  return `${year}-${month}-${day}`
+}
+
+function formatEasternGameDay(
+  isoDate: string
+) {
+  return new Intl.DateTimeFormat(
+    'en-US',
+    {
+      timeZone:
+        'America/New_York',
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+    }
+  ).format(
+    new Date(isoDate)
+  )
+}
+
 export default async function HomePage() {
   const authSupabase =
     await createClient()
@@ -223,7 +288,8 @@ export default async function HomePage() {
       first_picker_id,
       status,
       starts_at,
-      ends_at
+      ends_at,
+      allow_later_day_games
     `)
     .eq(
       'status',
@@ -253,6 +319,7 @@ export default async function HomePage() {
           <div className="flex flex-wrap items-center justify-between gap-4">
 
             <div>
+
               <h1 className="text-4xl font-black">
                 Spread Wars
               </h1>
@@ -260,6 +327,7 @@ export default async function HomePage() {
               <p className="mt-1 text-slate-400">
                 College Football
               </p>
+
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -271,13 +339,20 @@ export default async function HomePage() {
                 History
               </a>
 
+              <a
+                href="/admin"
+                className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold hover:bg-slate-800"
+              >
+                Admin
+              </a>
+
               <form
                 action="/auth/signout"
                 method="post"
               >
                 <button
                   type="submit"
-                  className="rounded-xl border border-slate-700 px-4 py-2 font-bold text-slate-300"
+                  className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold hover:bg-slate-800"
                 >
                   Sign Out
                 </button>
@@ -389,6 +464,13 @@ export default async function HomePage() {
     (adjustmentsData ??
       []) as ApprovedAdjustment[]
 
+  // --------------------------------------------------
+  // LOAD ALL GAMES IN THE WEEK WINDOW
+  //
+  // We intentionally include completed/started games
+  // here so the original first game day never changes.
+  // --------------------------------------------------
+
   let gamesQuery =
     supabase
       .from('games')
@@ -400,22 +482,12 @@ export default async function HomePage() {
         start_time,
         completed
       `)
-      .eq(
-        'completed',
-        false
-      )
 
   if (week.starts_at) {
     gamesQuery =
       gamesQuery.gte(
         'start_time',
         week.starts_at
-      )
-  } else {
-    gamesQuery =
-      gamesQuery.gte(
-        'start_time',
-        new Date().toISOString()
       )
   }
 
@@ -447,12 +519,40 @@ export default async function HomePage() {
   const allGames =
     (gamesData ?? []) as Game[]
 
+  // --------------------------------------------------
+  // PERMANENT FIRST GAME DAY
+  // --------------------------------------------------
+
+  const firstWeekGame =
+    allGames.length > 0
+      ? allGames[0]
+      : null
+
+  const firstGameDayKey =
+    firstWeekGame
+      ? getEasternDateKey(
+          firstWeekGame.start_time
+        )
+      : null
+
+  const firstGameDayLabel =
+    firstWeekGame
+      ? formatEasternGameDay(
+          firstWeekGame.start_time
+        )
+      : null
+
+  // --------------------------------------------------
+  // ONLY FUTURE, UNFINISHED GAMES ARE DRAFTABLE
+  // --------------------------------------------------
+
   const now =
     Date.now()
 
   const futureGames =
     allGames.filter(
       (game) =>
+        !game.completed &&
         new Date(
           game.start_time
         ).getTime() > now
@@ -661,8 +761,6 @@ export default async function HomePage() {
 
               </div>
 
-              <NotificationButton />
-
               <a
                 href="/history"
                 className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold hover:bg-slate-800"
@@ -752,17 +850,11 @@ export default async function HomePage() {
                 </div>
 
                 <div className="mt-5 text-3xl font-black">
-                  {
-                    record.wins
-                  }
+                  {record.wins}
                   -
-                  {
-                    record.losses
-                  }
+                  {record.losses}
                   -
-                  {
-                    record.pushes
-                  }
+                  {record.pushes}
                 </div>
 
                 <div className="mt-1 text-xs uppercase tracking-wide text-slate-500">
@@ -811,6 +903,16 @@ export default async function HomePage() {
               }
               loggedInPlayerId={
                 loggedInPlayer.id
+              }
+              allowLaterDayGames={
+                week.allow_later_day_games ??
+                false
+              }
+              firstGameDayKey={
+                firstGameDayKey
+              }
+              firstGameDayLabel={
+                firstGameDayLabel
               }
             />
 
@@ -868,7 +970,6 @@ export default async function HomePage() {
                             </div>
 
                             <div className="mt-2 text-xs font-bold uppercase">
-
                               {pick.line_locked ? (
                                 <span className="text-emerald-400">
                                   Locked
@@ -878,7 +979,6 @@ export default async function HomePage() {
                                   Current line
                                 </span>
                               )}
-
                             </div>
                           </>
                         ) : (
@@ -905,25 +1005,18 @@ export default async function HomePage() {
               <div className="mt-4 space-y-3 text-sm">
 
                 <div className="flex justify-between gap-4">
-
                   <span className="text-slate-400">
                     Week
                   </span>
-
                   <strong>
-                    {
-                      week.week_number
-                    }
+                    {week.week_number}
                   </strong>
-
                 </div>
 
                 <div className="flex justify-between gap-4">
-
                   <span className="text-slate-400">
                     First normal pick
                   </span>
-
                   <strong>
                     {
                       players.find(
@@ -934,36 +1027,44 @@ export default async function HomePage() {
                       '—'
                     }
                   </strong>
-
                 </div>
 
                 <div className="flex justify-between gap-4">
-
                   <span className="text-slate-400">
                     Normal picks
                   </span>
-
                   <strong>
-                    {
-                      normalPicks.length
-                    }
+                    {normalPicks.length}
                   </strong>
-
                 </div>
 
                 <div className="flex justify-between gap-4">
-
                   <span className="text-slate-400">
                     Current turn
                   </span>
-
                   <strong className="text-cyan-400">
                     {
                       currentTurnPlayer?.name ??
                       '—'
                     }
                   </strong>
+                </div>
 
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-400">
+                    Later-day games
+                  </span>
+                  <strong
+                    className={
+                      week.allow_later_day_games
+                        ? 'text-emerald-400'
+                        : 'text-amber-400'
+                    }
+                  >
+                    {week.allow_later_day_games
+                      ? 'Allowed'
+                      : 'Locked'}
+                  </strong>
                 </div>
 
               </div>
@@ -1004,15 +1105,12 @@ export default async function HomePage() {
                         </div>
 
                         <div className="mt-1 text-slate-400">
-
                           W{' '}
                           {adjustment.wins_delta >=
                           0
                             ? '+'
                             : ''}
-                          {
-                            adjustment.wins_delta
-                          }
+                          {adjustment.wins_delta}
 
                           {' · '}
 
@@ -1021,9 +1119,7 @@ export default async function HomePage() {
                           0
                             ? '+'
                             : ''}
-                          {
-                            adjustment.losses_delta
-                          }
+                          {adjustment.losses_delta}
 
                           {' · '}
 
@@ -1032,10 +1128,7 @@ export default async function HomePage() {
                           0
                             ? '+'
                             : ''}
-                          {
-                            adjustment.pushes_delta
-                          }
-
+                          {adjustment.pushes_delta}
                         </div>
 
                       </div>
@@ -1081,6 +1174,10 @@ export default async function HomePage() {
 
                 <p>
                   Automatic lines lock exactly one hour before kickoff.
+                </p>
+
+                <p>
+                  By default, only games on the week&apos;s first game day are available for normal drafting. Later-day games can be enabled in Admin.
                 </p>
 
               </div>

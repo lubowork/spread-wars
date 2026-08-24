@@ -119,6 +119,17 @@ export default async function HistoryPage() {
             Your login is not linked to a Spread Wars player.
           </div>
 
+          <div className="mt-8 pb-8">
+
+            <a
+              href="/"
+              className="flex min-h-14 w-full items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 px-5 py-4 text-center text-base font-black text-white transition hover:bg-slate-800"
+            >
+              ← Back to Spread Wars
+            </a>
+
+          </div>
+
         </div>
 
       </main>
@@ -159,19 +170,23 @@ export default async function HistoryPage() {
 
         <div className="mx-auto max-w-5xl">
 
-          <a
-            href="/"
-            className="font-bold text-cyan-400"
-          >
-            ← Back to Spread Wars
-          </a>
-
-          <h1 className="mt-6 text-4xl font-black">
+          <h1 className="text-4xl font-black">
             Season History
           </h1>
 
           <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-6 text-slate-400">
             No season has been created.
+          </div>
+
+          <div className="mt-8 pb-8">
+
+            <a
+              href="/"
+              className="flex min-h-14 w-full items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 px-5 py-4 text-center text-base font-black text-white transition hover:bg-slate-800"
+            >
+              ← Back to Spread Wars
+            </a>
+
           </div>
 
         </div>
@@ -431,14 +446,7 @@ export default async function HistoryPage() {
 
         <header className="mb-8">
 
-          <a
-            href="/"
-            className="text-sm font-bold text-cyan-400 hover:text-cyan-300"
-          >
-            ← Back to Spread Wars
-          </a>
-
-          <div className="mt-5 flex flex-wrap items-end justify-between gap-4">
+          <div className="flex flex-wrap items-end justify-between gap-4">
 
             <div>
 
@@ -859,6 +867,19 @@ export default async function HistoryPage() {
           )}
 
         </section>
+
+        {/* BOTTOM BACK BUTTON */}
+
+        <div className="mt-8 pb-8">
+
+          <a
+            href="/"
+            className="flex min-h-14 w-full items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 px-5 py-4 text-center text-base font-black text-white transition hover:bg-slate-800"
+          >
+            ← Back to Spread Wars
+          </a>
+
+        </div>
 
       </div>
 

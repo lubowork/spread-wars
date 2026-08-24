@@ -44,6 +44,78 @@ type Props = {
   weekId: string
   firstPickerId: string
   loggedInPlayerId: string
+  allowLaterDayGames: boolean
+  firstGameDayKey: string | null
+  firstGameDayLabel: string | null
+}
+
+function getEasternDateKey(
+  isoDate: string
+) {
+  const formatter =
+    new Intl.DateTimeFormat(
+      'en-US',
+      {
+        timeZone:
+          'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }
+    )
+
+  const parts =
+    formatter.formatToParts(
+      new Date(isoDate)
+    )
+
+  const year =
+    parts.find(
+      (part) =>
+        part.type === 'year'
+    )?.value
+
+  const month =
+    parts.find(
+      (part) =>
+        part.type === 'month'
+    )?.value
+
+  const day =
+    parts.find(
+      (part) =>
+        part.type === 'day'
+    )?.value
+
+  if (
+    !year ||
+    !month ||
+    !day
+  ) {
+    return null
+  }
+
+  return `${year}-${month}-${day}`
+}
+
+function formatEasternKickoff(
+  isoDate: string
+) {
+  return new Intl.DateTimeFormat(
+    'en-US',
+    {
+      timeZone:
+        'America/New_York',
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    }
+  ).format(
+    new Date(isoDate)
+  )
 }
 
 export default function DraftBoard({
@@ -53,15 +125,30 @@ export default function DraftBoard({
   weekId,
   firstPickerId,
   loggedInPlayerId,
+  allowLaterDayGames,
+  firstGameDayKey,
+  firstGameDayLabel,
 }: Props) {
-  const [currentPicks, setCurrentPicks] =
+  const [
+    currentPicks,
+    setCurrentPicks,
+  ] =
     useState<Pick[]>(picks)
 
   const [message, setMessage] =
     useState('')
 
-  const [submitting, setSubmitting] =
+  const [
+    submitting,
+    setSubmitting,
+  ] =
     useState(false)
+
+  const [
+    selectedTeam,
+    setSelectedTeam,
+  ] =
+    useState('')
 
   // --------------------------------------------------
   // KEEP LOCAL PICKS IN SYNC WITH SERVER PROPS
@@ -73,14 +160,6 @@ export default function DraftBoard({
 
   // --------------------------------------------------
   // AUTOMATIC PHONE REFRESH
-  //
-  // Every 5 seconds:
-  // ask the server how many picks exist.
-  //
-  // If the number changed, reload the page.
-  //
-  // Also checks immediately when the user comes
-  // back into Spread Wars or taps a notification.
   // --------------------------------------------------
 
   useEffect(() => {
@@ -239,7 +318,31 @@ export default function DraftBoard({
     loggedInPlayerId
 
   // --------------------------------------------------
-  // AVAILABLE GAMES
+  // FIRST-GAME-DAY RULE
+  //
+  // firstGameDayKey comes from app/page.tsx.
+  // It is based on the entire week, not just
+  // games that are still in the future.
+  // --------------------------------------------------
+
+  const dayEligibleGames =
+    allowLaterDayGames ||
+    !firstGameDayKey
+      ? games
+      : games.filter(
+          (game) =>
+            getEasternDateKey(
+              game.start_time
+            ) ===
+            firstGameDayKey
+        )
+
+  const laterDayGameCount =
+    games.length -
+    dayEligibleGames.length
+
+  // --------------------------------------------------
+  // REMOVE GAMES ALREADY PICKED
   // --------------------------------------------------
 
   const pickedGameIds =
@@ -251,12 +354,63 @@ export default function DraftBoard({
     )
 
   const availableGames =
-    games.filter(
+    dayEligibleGames.filter(
       (game) =>
         !pickedGameIds.has(
           game.id
         )
     )
+
+  // --------------------------------------------------
+  // ALPHABETICAL TEAM DROPDOWN
+  // --------------------------------------------------
+
+  const availableTeams =
+    Array.from(
+      new Set(
+        availableGames.flatMap(
+          (game) => [
+            game.away_team,
+            game.home_team,
+          ]
+        )
+      )
+    ).sort(
+      (a, b) =>
+        a.localeCompare(
+          b,
+          'en',
+          {
+            sensitivity:
+              'base',
+          }
+        )
+    )
+
+  useEffect(() => {
+    if (
+      selectedTeam &&
+      !availableTeams.includes(
+        selectedTeam
+      )
+    ) {
+      setSelectedTeam('')
+    }
+  }, [
+    selectedTeam,
+    availableTeams,
+  ])
+
+  const visibleGames =
+    selectedTeam
+      ? availableGames.filter(
+          (game) =>
+            game.home_team ===
+              selectedTeam ||
+            game.away_team ===
+              selectedTeam
+        )
+      : availableGames
 
   // --------------------------------------------------
   // GET LATEST SPREAD
@@ -324,6 +478,20 @@ export default function DraftBoard({
     }
 
     if (submitting) {
+      return
+    }
+
+    if (
+      !allowLaterDayGames &&
+      firstGameDayKey &&
+      getEasternDateKey(
+        game.start_time
+      ) !== firstGameDayKey
+    ) {
+      setMessage(
+        'Later-day games are currently locked. Enable Allow Later-Day Games in Admin to draft this game.'
+      )
+
       return
     }
 
@@ -400,7 +568,6 @@ export default function DraftBoard({
         return
       }
 
-      // Add the pick immediately to this phone.
       setCurrentPicks(
         (previous) => [
           ...previous,
@@ -409,20 +576,19 @@ export default function DraftBoard({
 
             spread:
               Number(
-                data.pick
-                  .spread
+                data.pick.spread
               ),
           },
         ]
       )
+
+      setSelectedTeam('')
 
       setMessage(
         data.message ??
           'Pick saved.'
       )
 
-      // Reload this phone after a successful pick,
-      // so all sidebar/header information updates too.
       window.setTimeout(
         () => {
           window.location.reload()
@@ -456,17 +622,31 @@ export default function DraftBoard({
             : 'border-slate-800 bg-slate-900'
         }`}
       >
+
         {availableGames.length ===
         0 ? (
           <>
             <div className="text-sm font-bold uppercase tracking-wide text-slate-500">
-              Draft Complete
+              No Available Games
             </div>
 
             <div className="mt-1 text-2xl font-black">
-              No games remain
-              available.
+              No games remain available under the current draft settings.
             </div>
+
+            {!allowLaterDayGames &&
+              laterDayGameCount >
+                0 && (
+                <div className="mt-3 text-sm text-amber-300">
+                  {laterDayGameCount}{' '}
+                  later-day{' '}
+                  {laterDayGameCount ===
+                  1
+                    ? 'game is'
+                    : 'games are'}{' '}
+                  currently locked.
+                </div>
+              )}
           </>
         ) : isMyTurn ? (
           <>
@@ -498,13 +678,46 @@ export default function DraftBoard({
             </div>
 
             <div className="mt-2 text-sm text-slate-400">
-              The board checks
-              for new picks
-              automatically.
+              The board checks for new picks automatically.
             </div>
           </>
         )}
+
       </div>
+
+      {/* FIRST GAME DAY STATUS */}
+
+      {!allowLaterDayGames &&
+        firstGameDayKey && (
+          <div className="rounded-xl border border-amber-800/60 bg-amber-950/30 p-4">
+
+            <div className="text-sm font-black text-amber-300">
+              First Game Day Only
+            </div>
+
+            <div className="mt-1 text-sm text-slate-300">
+              Normal drafting is currently limited to{' '}
+              <strong>
+                {firstGameDayLabel ??
+                  'the first game day'}
+              </strong>.
+            </div>
+
+            {laterDayGameCount >
+              0 && (
+              <div className="mt-1 text-xs text-slate-500">
+                {laterDayGameCount}{' '}
+                later-day{' '}
+                {laterDayGameCount ===
+                1
+                  ? 'game is'
+                  : 'games are'}{' '}
+                hidden. They can be enabled in Admin.
+              </div>
+            )}
+
+          </div>
+        )}
 
       {/* MESSAGE */}
 
@@ -514,14 +727,103 @@ export default function DraftBoard({
         </div>
       )}
 
+      {/* TEAM FINDER */}
+
+      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+
+          <div className="min-w-0 flex-1">
+
+            <label
+              htmlFor="team-filter"
+              className="mb-2 block text-sm font-black text-slate-200"
+            >
+              Find a Team
+            </label>
+
+            <select
+              id="team-filter"
+              value={
+                selectedTeam
+              }
+              onChange={(
+                event
+              ) =>
+                setSelectedTeam(
+                  event.target.value
+                )
+              }
+              disabled={
+                availableTeams.length ===
+                0
+              }
+              className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-base font-bold text-slate-950 disabled:opacity-50"
+            >
+
+              <option value="">
+                All Teams
+              </option>
+
+              {availableTeams.map(
+                (team) => (
+                  <option
+                    key={
+                      team
+                    }
+                    value={
+                      team
+                    }
+                  >
+                    {team}
+                  </option>
+                )
+              )}
+
+            </select>
+
+          </div>
+
+          {selectedTeam && (
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedTeam('')
+              }
+              className="min-h-12 rounded-xl border border-slate-700 bg-slate-800 px-5 py-3 font-bold hover:bg-slate-700"
+            >
+              Show All Teams
+            </button>
+          )}
+
+        </div>
+
+        <p className="mt-3 text-xs text-slate-500">
+          Teams are listed alphabetically. Select a school to show only that school&apos;s available matchup.
+        </p>
+
+      </div>
+
       {/* AVAILABLE GAMES */}
 
       <div>
-        <div className="mb-4 flex items-center justify-between">
 
-          <h2 className="text-2xl font-black">
-            Available Games
-          </h2>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+
+          <div>
+
+            <h2 className="text-2xl font-black">
+              Available Games
+            </h2>
+
+            {selectedTeam && (
+              <div className="mt-1 text-sm font-bold text-cyan-400">
+                Showing{' '}
+                {selectedTeam}
+              </div>
+            )}
+
+          </div>
 
           <div className="text-sm text-slate-500">
             DraftKings Spread
@@ -532,13 +834,25 @@ export default function DraftBoard({
         {availableGames.length ===
         0 ? (
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center text-slate-500">
-            No games are
-            currently available.
+            No games are currently available.
+          </div>
+        ) : visibleGames.length ===
+          0 ? (
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center">
+
+            <div className="font-black">
+              No available matchup found.
+            </div>
+
+            <div className="mt-2 text-sm text-slate-500">
+              Choose another team or select All Teams.
+            </div>
+
           </div>
         ) : (
           <div className="space-y-4">
 
-            {availableGames.map(
+            {visibleGames.map(
               (game) => {
                 const awayOdds =
                   getSpread(
@@ -561,9 +875,9 @@ export default function DraftBoard({
                   >
 
                     <div className="mb-4 text-xs uppercase tracking-wide text-slate-500">
-                      {new Date(
+                      {formatEasternKickoff(
                         game.start_time
-                      ).toLocaleString()}
+                      )}
                     </div>
 
                     <div className="grid gap-3 md:grid-cols-2">
@@ -675,6 +989,7 @@ export default function DraftBoard({
 
           </div>
         )}
+
       </div>
 
       {/* DRAFT HISTORY */}

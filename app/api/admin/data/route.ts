@@ -1,65 +1,37 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '../../../../lib/supabase-server'
-import { createAdminClient } from '../../../../lib/supabase-admin'
+import { createClient } from '@/lib/supabase-server'
+import { createAdminClient } from '@/lib/supabase-admin'
 
 export async function GET() {
   try {
-    // --------------------------------------------------
-    // REQUIRE LOGIN
-    // --------------------------------------------------
-
-    const authSupabase =
-      await createClient()
+    const supabase = await createClient()
+    const supabaseAdmin = createAdminClient()
 
     const {
       data: { user },
       error: userError,
-    } =
-      await authSupabase.auth.getUser()
+    } = await supabase.auth.getUser()
 
     if (userError || !user) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            'You must be signed in.',
+          error: 'Not authenticated.',
         },
         { status: 401 }
       )
     }
 
-    const supabase =
-      createAdminClient()
-
-    // --------------------------------------------------
-    // LOGGED-IN PLAYER
-    // --------------------------------------------------
-
     const {
       data: loggedInPlayer,
-      error:
-        loggedInPlayerError,
-    } = await supabase
+      error: playerError,
+    } = await supabaseAdmin
       .from('players')
-      .select(`
-        id,
-        name
-      `)
-      .eq(
-        'auth_user_id',
-        user.id
-      )
-      .maybeSingle()
+      .select('id, name')
+      .eq('auth_user_id', user.id)
+      .single()
 
-    if (
-      loggedInPlayerError
-    ) {
-      throw new Error(
-        loggedInPlayerError.message
-      )
-    }
-
-    if (!loggedInPlayer) {
+    if (playerError || !loggedInPlayer) {
       return NextResponse.json(
         {
           success: false,
@@ -70,211 +42,116 @@ export async function GET() {
       )
     }
 
-    // --------------------------------------------------
-    // ALL PLAYERS
-    // --------------------------------------------------
-
     const {
       data: players,
       error: playersError,
-    } = await supabase
+    } = await supabaseAdmin
       .from('players')
-      .select(`
-        id,
-        name
-      `)
+      .select('id, name')
       .order('name')
 
     if (playersError) {
-      throw new Error(
-        playersError.message
-      )
+      throw playersError
     }
-
-    // --------------------------------------------------
-    // ACTIVE WEEK
-    // --------------------------------------------------
 
     const {
       data: week,
       error: weekError,
-    } = await supabase
+    } = await supabaseAdmin
       .from('weeks')
       .select(`
         id,
         week_number,
         status,
         starts_at,
-        ends_at
+        ends_at,
+        allow_later_day_games
       `)
-      .eq(
-        'status',
-        'active'
-      )
-      .order(
-        'week_number',
-        {
-          ascending: false,
-        }
-      )
+      .eq('status', 'active')
+      .order('week_number', {
+        ascending: false,
+      })
       .limit(1)
       .maybeSingle()
 
     if (weekError) {
-      throw new Error(
-        weekError.message
-      )
+      throw weekError
     }
 
-    if (!week) {
-      return NextResponse.json({
-        success: true,
+    let adjustments: any[] = []
 
-        loggedInPlayer,
-
-        players:
-          players ?? [],
-
-        week:
-          null,
-
-        adjustments:
-          [],
-      })
-    }
-
-    // --------------------------------------------------
-    // ADJUSTMENTS FOR ACTIVE WEEK
-    // --------------------------------------------------
-
-    const {
-      data: adjustments,
-      error:
-        adjustmentsError,
-    } = await supabase
-      .from(
-        'result_adjustments'
-      )
-      .select(`
-        id,
-        target_player_id,
-        requested_by_player_id,
-        wins_delta,
-        losses_delta,
-        pushes_delta,
-        reason,
-        status,
-        created_at
-      `)
-      .eq(
-        'week_id',
-        week.id
-      )
-      .order(
-        'created_at',
-        {
-          ascending: false,
-        }
-      )
-
-    if (adjustmentsError) {
-      throw new Error(
-        adjustmentsError.message
-      )
-    }
-
-    // --------------------------------------------------
-    // GET VOTES
-    // --------------------------------------------------
-
-    const adjustmentIds =
-      (adjustments ?? []).map(
-        (adjustment) =>
-          adjustment.id
-      )
-
-    let votes: {
-      adjustment_id: string
-      player_id: string
-      vote: string
-    }[] = []
-
-    if (
-      adjustmentIds.length >
-      0
-    ) {
+    if (week) {
       const {
-        data: voteData,
-        error: voteError,
-      } = await supabase
-        .from(
-          'adjustment_votes'
-        )
+        data: adjustmentData,
+        error: adjustmentsError,
+      } = await supabaseAdmin
+        .from('result_adjustments')
         .select(`
-          adjustment_id,
-          player_id,
-          vote
+          id,
+          target_player_id,
+          requested_by_player_id,
+          wins_delta,
+          losses_delta,
+          pushes_delta,
+          reason,
+          status,
+          created_at,
+          adjustment_votes (
+            player_id,
+            vote,
+            voted_at
+          )
         `)
-        .in(
-          'adjustment_id',
-          adjustmentIds
-        )
+        .eq('week_id', week.id)
+        .order('created_at', {
+          ascending: false,
+        })
 
-      if (voteError) {
-        throw new Error(
-          voteError.message
-        )
+      if (adjustmentsError) {
+        throw adjustmentsError
       }
 
-      votes =
-        voteData ?? []
+      adjustments = adjustmentData ?? []
     }
-
-    // --------------------------------------------------
-    // ATTACH VOTES TO EACH ADJUSTMENT
-    // --------------------------------------------------
-
-    const adjustmentsWithVotes =
-      (adjustments ?? []).map(
-        (adjustment) => ({
-          ...adjustment,
-
-          adjustment_votes:
-            votes.filter(
-              (vote) =>
-                vote.adjustment_id ===
-                adjustment.id
-            ),
-        })
-      )
-
-    // --------------------------------------------------
-    // RESPONSE
-    // --------------------------------------------------
 
     return NextResponse.json({
       success: true,
 
-      loggedInPlayer,
+      loggedInPlayer: {
+        id: loggedInPlayer.id,
+        name: loggedInPlayer.name,
+      },
 
-      players:
-        players ?? [],
+      players: players ?? [],
 
-      week,
+      week: week
+        ? {
+            id: week.id,
+            week_number:
+              week.week_number,
+            status:
+              week.status,
+            starts_at:
+              week.starts_at,
+            ends_at:
+              week.ends_at,
+            allow_later_day_games:
+              week.allow_later_day_games ??
+              false,
+          }
+        : null,
 
-      adjustments:
-        adjustmentsWithVotes,
+      adjustments,
     })
   } catch (error) {
     console.error(
-      'GET /api/admin/data error:',
+      'Admin data error:',
       error
     )
 
     return NextResponse.json(
       {
         success: false,
-
         error:
           error instanceof Error
             ? error.message

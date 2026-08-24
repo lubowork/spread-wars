@@ -1,236 +1,222 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '../../../../lib/supabase-server'
-import { createAdminClient } from '../../../../lib/supabase-admin'
+import { createClient } from '@/lib/supabase-server'
+import { createAdminClient } from '@/lib/supabase-admin'
 
-export async function POST(
-  request: Request
-) {
+export async function POST(request: Request) {
   try {
-    // -----------------------------------------------
-    // REQUIRE LOGIN
-    // -----------------------------------------------
-
-    const authSupabase =
-      await createClient()
+    const supabase = await createClient()
+    const supabaseAdmin = createAdminClient()
 
     const {
       data: { user },
       error: userError,
-    } =
-      await authSupabase.auth.getUser()
+    } = await supabase.auth.getUser()
 
     if (userError || !user) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            'You must be signed in.',
+          error: 'Not authenticated.',
         },
         { status: 401 }
       )
     }
 
-    const supabase =
-      createAdminClient()
-
-    // -----------------------------------------------
-    // VERIFY USER IS GEOFF OR GENERAL
-    // -----------------------------------------------
-
     const {
-      data: player,
+      data: loggedInPlayer,
       error: playerError,
-    } = await supabase
+    } = await supabaseAdmin
       .from('players')
       .select('id, name')
-      .eq(
-        'auth_user_id',
-        user.id
-      )
-      .maybeSingle()
+      .eq('auth_user_id', user.id)
+      .single()
 
-    if (playerError) {
-      throw new Error(
-        playerError.message
-      )
-    }
-
-    if (!player) {
+    if (playerError || !loggedInPlayer) {
       return NextResponse.json(
         {
           success: false,
           error:
-            'Your login is not linked to a player.',
+            'Your login is not linked to a Spread Wars player.',
         },
         { status: 403 }
       )
     }
 
-    // -----------------------------------------------
-    // READ REQUEST
-    // -----------------------------------------------
-
-    const body =
-      await request.json()
+    const body = await request.json()
 
     const {
       weekId,
       startsAt,
       endsAt,
+      allowLaterDayGames,
     } = body
 
-    if (
-      !weekId ||
-      !startsAt ||
-      !endsAt
-    ) {
+    if (!weekId) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            'Week, start date, and end date are required.',
+          error: 'Week ID is required.',
         },
         { status: 400 }
       )
     }
 
-    const start =
+    if (!startsAt || !endsAt) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Week start and end times are required.',
+        },
+        { status: 400 }
+      )
+    }
+
+    const startDate =
       new Date(startsAt)
 
-    const end =
+    const endDate =
       new Date(endsAt)
 
     if (
       Number.isNaN(
-        start.getTime()
+        startDate.getTime()
       ) ||
       Number.isNaN(
-        end.getTime()
+        endDate.getTime()
       )
     ) {
       return NextResponse.json(
         {
           success: false,
           error:
-            'Invalid week dates.',
+            'Invalid week start or end time.',
         },
         { status: 400 }
       )
     }
 
     if (
-      end.getTime() <=
-      start.getTime()
+      endDate.getTime() <=
+      startDate.getTime()
     ) {
       return NextResponse.json(
         {
           success: false,
           error:
-            'The week end must be after the week start.',
+            'Week end time must be after the start time.',
         },
         { status: 400 }
       )
     }
 
-    // -----------------------------------------------
-    // ONLY MODIFY ACTIVE WEEK
-    // -----------------------------------------------
-
-    const {
-      data: week,
-      error: weekError,
-    } = await supabase
-      .from('weeks')
-      .select(`
-        id,
-        week_number,
-        status
-      `)
-      .eq(
-        'id',
-        weekId
-      )
-      .eq(
-        'status',
-        'active'
-      )
-      .maybeSingle()
-
-    if (weekError) {
-      throw new Error(
-        weekError.message
-      )
-    }
-
-    if (!week) {
+    if (
+      typeof allowLaterDayGames !==
+        'boolean' &&
+      typeof allowLaterDayGames !==
+        'undefined'
+    ) {
       return NextResponse.json(
         {
           success: false,
           error:
-            'Active week not found.',
+            'Allow Later-Day Games must be true or false.',
+        },
+        { status: 400 }
+      )
+    }
+
+    const {
+      data: activeWeek,
+      error: weekError,
+    } = await supabaseAdmin
+      .from('weeks')
+      .select(`
+        id,
+        week_number,
+        status,
+        allow_later_day_games
+      `)
+      .eq('id', weekId)
+      .eq('status', 'active')
+      .single()
+
+    if (
+      weekError ||
+      !activeWeek
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Active week was not found.',
         },
         { status: 404 }
       )
     }
 
-    // -----------------------------------------------
-    // UPDATE WINDOW
-    // -----------------------------------------------
+    const updateValues: {
+      starts_at: string
+      ends_at: string
+      allow_later_day_games?: boolean
+    } = {
+      starts_at:
+        startDate.toISOString(),
+
+      ends_at:
+        endDate.toISOString(),
+    }
+
+    if (
+      typeof allowLaterDayGames ===
+      'boolean'
+    ) {
+      updateValues.allow_later_day_games =
+        allowLaterDayGames
+    }
 
     const {
       data: updatedWeek,
       error: updateError,
-    } = await supabase
+    } = await supabaseAdmin
       .from('weeks')
-      .update({
-        starts_at:
-          start.toISOString(),
-
-        ends_at:
-          end.toISOString(),
-      })
-      .eq(
-        'id',
-        week.id
-      )
+      .update(updateValues)
+      .eq('id', activeWeek.id)
       .select(`
         id,
         week_number,
         status,
         starts_at,
-        ends_at
+        ends_at,
+        allow_later_day_games
       `)
       .single()
 
     if (updateError) {
-      throw new Error(
-        updateError.message
-      )
+      throw updateError
     }
 
     return NextResponse.json({
       success: true,
 
       message:
-        `Week ${updatedWeek.week_number} window updated by ${player.name}.`,
+        'Week settings updated successfully.',
 
-      week:
-        updatedWeek,
+      week: updatedWeek,
     })
   } catch (error) {
     console.error(
-      'POST /api/admin/week-window error:',
+      'Week settings update error:',
       error
     )
 
     return NextResponse.json(
       {
         success: false,
-
         error:
           error instanceof Error
             ? error.message
-            : 'Unable to update week window.',
+            : 'Unable to update week settings.',
       },
       { status: 500 }
     )

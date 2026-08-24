@@ -6,6 +6,8 @@ import {
   useState,
 } from 'react'
 
+import NotificationButton from '@/app/components/NotificationButton'
+
 type Player = {
   id: string
   name: string
@@ -22,6 +24,7 @@ type Week = {
   status: string
   starts_at: string | null
   ends_at: string | null
+  allow_later_day_games: boolean
 }
 
 type Vote = {
@@ -126,6 +129,12 @@ export default function AdminPage() {
   ] =
     useState('')
 
+  const [
+    allowLaterDayGames,
+    setAllowLaterDayGames,
+  ] =
+    useState(false)
+
   const [message, setMessage] =
     useState('')
 
@@ -196,6 +205,12 @@ export default function AdminPage() {
           isoToLocalInput(
             data.week.ends_at
           )
+        )
+
+        setAllowLaterDayGames(
+          data.week
+            .allow_later_day_games ??
+            false
         )
       }
 
@@ -282,7 +297,7 @@ export default function AdminPage() {
     }
   }
 
-  async function updateWeekWindow(
+  async function updateWeekSettings(
     event: FormEvent
   ) {
     event.preventDefault()
@@ -335,6 +350,8 @@ export default function AdminPage() {
                   new Date(
                     weekEndsAt
                   ).toISOString(),
+
+                allowLaterDayGames,
               }),
           }
         )
@@ -361,13 +378,13 @@ export default function AdminPage() {
       ) {
         throw new Error(
           data.error ||
-            'Unable to update week window.'
+            'Unable to update week settings.'
         )
       }
 
       setMessage(
         data.message ||
-          'Week window updated.'
+          'Week settings updated.'
       )
 
       await loadData()
@@ -375,7 +392,7 @@ export default function AdminPage() {
       setMessage(
         error instanceof Error
           ? error.message
-          : 'Unable to update week window.'
+          : 'Unable to update week settings.'
       )
     } finally {
       setLoading(false)
@@ -571,7 +588,6 @@ export default function AdminPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6">
-
       <div className="mx-auto max-w-5xl">
 
         {/* HEADER */}
@@ -618,85 +634,176 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* WEEK WINDOW */}
+        {/* NOTIFICATIONS */}
 
         <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:p-6">
 
           <h2 className="text-xl font-black">
-            Week Game Window
+            Notifications
           </h2>
 
           <p className="mt-2 text-sm text-slate-400">
-            Only games inside this window appear on the draft board and qualify for automatic Penn State and Miami picks.
+            Manage push notifications for this phone or device.
+            Notifications let Spread Wars alert you when it becomes your turn to pick.
+          </p>
+
+          <div className="mt-5 rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
+
+            <div className="mb-3">
+
+              <div className="font-black">
+                Turn Notifications
+              </div>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Notification permission is managed separately on each iPhone, Android phone, or browser.
+              </p>
+
+            </div>
+
+            <NotificationButton />
+
+          </div>
+
+        </section>
+
+        {/* WEEK SETTINGS */}
+
+        <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:p-6">
+
+          <h2 className="text-xl font-black">
+            Week Settings
+          </h2>
+
+          <p className="mt-2 text-sm text-slate-400">
+            Control which games belong to the active week and whether games after the first game day can be drafted.
           </p>
 
           <form
             onSubmit={
-              updateWeekWindow
+              updateWeekSettings
             }
-            className="mt-6 grid gap-4 md:grid-cols-2"
+            className="mt-6 space-y-6"
           >
 
-            <div>
+            <div className="grid gap-4 md:grid-cols-2">
 
-              <label className="mb-2 block text-sm font-bold text-slate-300">
-                Starts
-              </label>
+              <div>
 
-              <input
-                type="datetime-local"
-                value={
-                  weekStartsAt
-                }
-                onChange={(
-                  event
-                ) =>
-                  setWeekStartsAt(
-                    event.target.value
-                  )
-                }
-                className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
-              />
+                <label className="mb-2 block text-sm font-bold text-slate-300">
+                  Starts
+                </label>
+
+                <input
+                  type="datetime-local"
+                  value={
+                    weekStartsAt
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setWeekStartsAt(
+                      event.target.value
+                    )
+                  }
+                  className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
+                />
+
+              </div>
+
+              <div>
+
+                <label className="mb-2 block text-sm font-bold text-slate-300">
+                  Ends
+                </label>
+
+                <input
+                  type="datetime-local"
+                  value={
+                    weekEndsAt
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setWeekEndsAt(
+                      event.target.value
+                    )
+                  }
+                  className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
+                />
+
+              </div>
+
+            </div>
+
+            {/* LATER-DAY GAMES TOGGLE */}
+
+            <div className="rounded-2xl border border-slate-700 bg-slate-950/50 p-4 sm:p-5">
+
+              <div className="flex items-start justify-between gap-4">
+
+                <div className="min-w-0">
+
+                  <div className="font-black">
+                    Allow Later-Day Games
+                  </div>
+
+                  <p className="mt-1 text-sm text-slate-400">
+                    {allowLaterDayGames
+                      ? 'ON — Games on later days of the week may also be drafted.'
+                      : 'OFF — Only games on the week’s first game day may be drafted.'}
+                  </p>
+
+                  <p className="mt-2 text-xs text-slate-500">
+                    Penn State and Miami automatic picks are not affected by this setting.
+                  </p>
+
+                </div>
+
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={
+                    allowLaterDayGames
+                  }
+                  onClick={() =>
+                    setAllowLaterDayGames(
+                      (current) =>
+                        !current
+                    )
+                  }
+                  disabled={loading}
+                  className={`relative h-8 w-14 shrink-0 rounded-full transition ${
+                    allowLaterDayGames
+                      ? 'bg-emerald-500'
+                      : 'bg-slate-700'
+                  } disabled:opacity-50`}
+                >
+
+                  <span
+                    className={`absolute top-1 h-6 w-6 rounded-full bg-white transition ${
+                      allowLaterDayGames
+                        ? 'left-7'
+                        : 'left-1'
+                    }`}
+                  />
+
+                </button>
+
+              </div>
 
             </div>
 
-            <div>
-
-              <label className="mb-2 block text-sm font-bold text-slate-300">
-                Ends
-              </label>
-
-              <input
-                type="datetime-local"
-                value={
-                  weekEndsAt
-                }
-                onChange={(
-                  event
-                ) =>
-                  setWeekEndsAt(
-                    event.target.value
-                  )
-                }
-                className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
-              />
-
-            </div>
-
-            <div className="md:col-span-2">
-
-              <button
-                type="submit"
-                disabled={
-                  loading ||
-                  !week
-                }
-                className="w-full rounded-xl bg-emerald-500 px-5 py-3 font-black text-slate-950 disabled:opacity-50 sm:w-auto"
-              >
-                Save Week Window
-              </button>
-
-            </div>
+            <button
+              type="submit"
+              disabled={
+                loading ||
+                !week
+              }
+              className="w-full rounded-xl bg-emerald-500 px-5 py-3 font-black text-slate-950 disabled:opacity-50 sm:w-auto"
+            >
+              Save Week Settings
+            </button>
 
           </form>
 
@@ -799,8 +906,6 @@ export default function AdminPage() {
             className="mt-6 space-y-5"
           >
 
-            {/* PLAYER */}
-
             <div>
 
               <label className="mb-2 block text-sm font-bold text-slate-300">
@@ -841,8 +946,6 @@ export default function AdminPage() {
               </select>
 
             </div>
-
-            {/* RECORD CHANGES */}
 
             <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
 
@@ -941,8 +1044,6 @@ export default function AdminPage() {
               </div>
 
             </div>
-
-            {/* REASON */}
 
             <div>
 
@@ -1212,7 +1313,6 @@ export default function AdminPage() {
         </div>
 
       </div>
-
     </main>
   )
 }
