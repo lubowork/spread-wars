@@ -35,6 +35,11 @@ type Adjustment = {
   pushes_delta: number
 }
 
+// General finished last season 20 wins ahead.
+// Positive = General leads.
+// Negative = Geoff leads.
+const STARTING_GENERAL_LEAD = 20
+
 function formatSpread(
   spread: number
 ) {
@@ -434,6 +439,74 @@ export default async function HistoryPage() {
       )
 
   // --------------------------------------------------
+  // OVERALL RUNNING TALLY
+  //
+  // General begins this season +20.
+  //
+  // Example:
+  // General starts +20.
+  // Geoff wins 20 this season.
+  // General wins 10 this season.
+  // Geoff gains 10.
+  // New running tally = General +10.
+  // --------------------------------------------------
+
+  const generalStanding =
+    standings.find(
+      (standing) =>
+        standing.player.name
+          .trim()
+          .toLowerCase() ===
+        'general'
+    )
+
+  const geoffStanding =
+    standings.find(
+      (standing) =>
+        standing.player.name
+          .trim()
+          .toLowerCase() ===
+        'geoff'
+    )
+
+  const generalSeasonWins =
+    generalStanding?.wins ?? 0
+
+  const geoffSeasonWins =
+    geoffStanding?.wins ?? 0
+
+  const runningGeneralLead =
+    STARTING_GENERAL_LEAD +
+    generalSeasonWins -
+    geoffSeasonWins
+
+  let overallLeader =
+    'Tied'
+
+  let overallLeadAmount =
+    0
+
+  if (
+    runningGeneralLead > 0
+  ) {
+    overallLeader =
+      'General'
+
+    overallLeadAmount =
+      runningGeneralLead
+  } else if (
+    runningGeneralLead < 0
+  ) {
+    overallLeader =
+      'Geoff'
+
+    overallLeadAmount =
+      Math.abs(
+        runningGeneralLead
+      )
+  }
+
+  // --------------------------------------------------
   // PAGE
   // --------------------------------------------------
 
@@ -486,7 +559,9 @@ export default async function HistoryPage() {
             Season Standings
           </h2>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
+
+            {/* PLAYER STANDINGS */}
 
             {standings.map(
               (
@@ -498,7 +573,10 @@ export default async function HistoryPage() {
                     standing.player.id
                   }
                   className={`rounded-2xl border p-6 ${
-                    index === 0
+                    index === 0 &&
+                    standing.wins +
+                      standing.losses >
+                      0
                       ? 'border-cyan-500 bg-cyan-950/30'
                       : 'border-slate-800 bg-slate-900'
                   }`}
@@ -556,6 +634,55 @@ export default async function HistoryPage() {
                 </div>
               )
             )}
+
+            {/* OVERALL RUNNING TALLY */}
+
+            <div className="rounded-2xl border border-amber-500/70 bg-amber-950/20 p-6">
+
+              <div>
+
+                <div className="text-2xl font-black">
+                  Overall Tally
+                </div>
+
+                <div className="mt-1 text-sm text-slate-400">
+                  Running lead
+                </div>
+
+              </div>
+
+              <div className="mt-5">
+
+                {overallLeader ===
+                'Tied' ? (
+                  <div className="text-4xl font-black text-amber-400">
+                    Tied
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-4xl font-black text-amber-400">
+                      {
+                        overallLeader
+                      }{' '}
+                      +
+                      {
+                        overallLeadAmount
+                      }
+                    </div>
+
+                    <div className="mt-2 text-sm text-slate-400">
+                      Overall games ahead
+                    </div>
+                  </>
+                )}
+
+              </div>
+
+              <div className="mt-5 border-t border-amber-900/60 pt-4 text-xs text-slate-500">
+                Started this season with General +20
+              </div>
+
+            </div>
 
           </div>
 
