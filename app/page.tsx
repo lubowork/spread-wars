@@ -202,6 +202,26 @@ function formatEasternGameDay(
   )
 }
 
+function formatEasternKickoff(
+  isoDate: string
+) {
+  return new Intl.DateTimeFormat(
+    'en-US',
+    {
+      timeZone:
+        'America/New_York',
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    }
+  ).format(
+    new Date(isoDate)
+  )
+}
+
 export default async function HomePage() {
   const authSupabase =
     await createClient()
@@ -490,9 +510,6 @@ export default async function HomePage() {
 
   // --------------------------------------------------
   // ALL GAMES IN ACTIVE WEEK
-  //
-  // Include started/completed games here so the
-  // original first game day never changes.
   // --------------------------------------------------
 
   let gamesQuery =
@@ -875,6 +892,46 @@ export default async function HomePage() {
                       )
                   : null
 
+              const automaticGame =
+                automaticPick
+                  ? allGames.find(
+                      (game) =>
+                        game.id ===
+                        automaticPick.game_id
+                    )
+                  : null
+
+              let automaticOpponent:
+                string | null = null
+
+              let automaticLocation:
+                'vs' | '@' | null = null
+
+              if (
+                automaticPick &&
+                automaticGame
+              ) {
+                if (
+                  automaticPick.team ===
+                  automaticGame.home_team
+                ) {
+                  automaticOpponent =
+                    automaticGame.away_team
+
+                  automaticLocation =
+                    'vs'
+                } else if (
+                  automaticPick.team ===
+                  automaticGame.away_team
+                ) {
+                  automaticOpponent =
+                    automaticGame.home_team
+
+                  automaticLocation =
+                    '@'
+                }
+              }
+
               return (
                 <div
                   key={
@@ -940,48 +997,79 @@ export default async function HomePage() {
 
                     </div>
 
-                    {/* AUTOMATIC TEAM + SPREAD */}
+                    {/* AUTOMATIC PICK BOX */}
 
                     <div className="min-w-0 rounded-xl bg-slate-800 px-4 py-3">
 
-                      <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                        Automatic Pick
-                      </div>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 
-                      <div className="mt-1 truncate text-sm font-black text-white sm:whitespace-normal">
-                        {automaticPick
-                          ? automaticPick.team
-                          : player.automatic_team}
-                      </div>
+                        {/* LEFT SIDE */}
 
-                      {automaticSpread !==
-                      null ? (
-                        <>
-                          <div className="mt-1 text-xl font-black text-cyan-400">
-                            {formatSpread(
-                              automaticSpread
-                            )}
+                        <div className="min-w-0">
+
+                          <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                            Automatic Pick
                           </div>
 
-                          <div className="mt-1 text-[10px] font-black uppercase tracking-wide">
-
-                            {automaticPick?.line_locked ? (
-                              <span className="text-emerald-400">
-                                Locked
-                              </span>
-                            ) : (
-                              <span className="text-amber-400">
-                                Current Line
-                              </span>
-                            )}
-
+                          <div className="mt-1 truncate text-sm font-black text-white sm:whitespace-normal">
+                            {automaticPick
+                              ? automaticPick.team
+                              : player.automatic_team}
                           </div>
-                        </>
-                      ) : (
-                        <div className="mt-2 text-xs text-slate-500">
-                          Waiting for DraftKings line
+
+                          {automaticSpread !==
+                          null ? (
+                            <>
+                              <div className="mt-1 text-xl font-black text-cyan-400">
+                                {formatSpread(
+                                  automaticSpread
+                                )}
+                              </div>
+
+                              <div className="mt-1 text-[10px] font-black uppercase tracking-wide">
+
+                                {automaticPick?.line_locked ? (
+                                  <span className="text-emerald-400">
+                                    Locked
+                                  </span>
+                                ) : (
+                                  <span className="text-amber-400">
+                                    Current Line
+                                  </span>
+                                )}
+
+                              </div>
+                            </>
+                          ) : (
+                            <div className="mt-2 text-xs text-slate-500">
+                              Waiting for DraftKings line
+                            </div>
+                          )}
+
                         </div>
-                      )}
+
+                        {/* RIGHT SIDE - OPPONENT + TIME */}
+
+                        {automaticGame &&
+                          automaticOpponent &&
+                          automaticLocation && (
+                            <div className="shrink-0 border-t border-slate-700 pt-3 sm:min-w-[190px] sm:border-l sm:border-t-0 sm:border-slate-700 sm:pl-4 sm:pt-0">
+
+                              <div className="text-sm font-bold text-slate-200">
+                                {automaticLocation}{' '}
+                                {automaticOpponent}
+                              </div>
+
+                              <div className="mt-1 text-xs text-slate-400">
+                                {formatEasternKickoff(
+                                  automaticGame.start_time
+                                )}
+                              </div>
+
+                            </div>
+                          )}
+
+                      </div>
 
                     </div>
 
