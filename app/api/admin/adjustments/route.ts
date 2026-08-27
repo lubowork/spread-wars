@@ -54,7 +54,7 @@ export async function POST(
         {
           success: false,
           error:
-            'Your login is not linked to a Spread Wars player.',
+            'Your login is not linked to a Spread Wars Player.',
         },
         { status: 403 }
       )
