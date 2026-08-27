@@ -282,7 +282,8 @@ export default function AdminPage() {
       }
 
       setMessage(
-        `${label} completed successfully.`
+        data.message ||
+          `${label} completed successfully.`
       )
 
       await loadData()
@@ -291,6 +292,82 @@ export default function AdminPage() {
         error instanceof Error
           ? error.message
           : `${label} failed.`
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // --------------------------------------------------
+  // UNDO LAST NORMAL PICK
+  // --------------------------------------------------
+
+  async function undoLastPick() {
+    if (loading) {
+      return
+    }
+
+    const confirmed =
+      window.confirm(
+        'Undo the most recent normal draft pick?\n\nThe game will return to the Draft Board and the turn will go back to the player who made that pick.\n\nAutomatic Miami and Penn State picks will never be removed.'
+      )
+
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      setLoading(true)
+
+      setMessage(
+        'Undoing last pick...'
+      )
+
+      const response =
+        await fetch(
+          '/api/admin/undo-last-pick',
+          {
+            method: 'POST',
+          }
+        )
+
+      const responseText =
+        await response.text()
+
+      let data: any
+
+      try {
+        data =
+          JSON.parse(
+            responseText
+          )
+      } catch {
+        throw new Error(
+          `Unexpected server response (${response.status}).`
+        )
+      }
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            'Unable to undo the last pick.'
+        )
+      }
+
+      setMessage(
+        data.message ||
+          'Last pick was undone successfully.'
+      )
+
+      await loadData()
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Unable to undo the last pick.'
       )
     } finally {
       setLoading(false)
@@ -588,6 +665,7 @@ export default function AdminPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6">
+
       <div className="mx-auto max-w-5xl">
 
         {/* HEADER */}
@@ -821,7 +899,7 @@ export default function AdminPage() {
             Odds, automatic picks, and results are handled automatically. These controls are mainly for troubleshooting.
           </p>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
 
             <button
               type="button"
@@ -835,6 +913,17 @@ export default function AdminPage() {
               className="rounded-xl bg-slate-800 px-4 py-3 font-bold hover:bg-slate-700 disabled:opacity-50"
             >
               Sync Odds
+            </button>
+
+            <button
+              type="button"
+              onClick={
+                undoLastPick
+              }
+              disabled={loading}
+              className="rounded-xl border border-amber-700 bg-amber-950/50 px-4 py-3 font-bold text-amber-200 hover:bg-amber-900/60 disabled:opacity-50"
+            >
+              Undo Last Pick
             </button>
 
             <button
@@ -878,6 +967,18 @@ export default function AdminPage() {
             >
               Finalize Week
             </button>
+
+          </div>
+
+          <div className="mt-4 rounded-xl border border-amber-900/60 bg-amber-950/20 p-4">
+
+            <div className="text-sm font-black text-amber-300">
+              Undo Last Pick
+            </div>
+
+            <p className="mt-1 text-xs text-slate-400">
+              Removes only the most recent normal draft pick. The matchup returns to the Draft Board and the turn goes back to the player who made that pick. Automatic picks are protected.
+            </p>
 
           </div>
 
@@ -1313,6 +1414,7 @@ export default function AdminPage() {
         </div>
 
       </div>
+
     </main>
   )
 }

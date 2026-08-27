@@ -37,6 +37,12 @@ type Pick = {
   result: string
 }
 
+type PendingPick = {
+  game: Game
+  team: string
+  spread: number
+}
+
 type Props = {
   players: Player[]
   games: Game[]
@@ -149,6 +155,14 @@ export default function DraftBoard({
     setSelectedTeam,
   ] =
     useState('')
+
+  const [
+    pendingPick,
+    setPendingPick,
+  ] =
+    useState<PendingPick | null>(
+      null
+    )
 
   // --------------------------------------------------
   // KEEP LOCAL PICKS IN SYNC WITH SERVER PROPS
@@ -319,10 +333,6 @@ export default function DraftBoard({
 
   // --------------------------------------------------
   // FIRST-GAME-DAY RULE
-  //
-  // firstGameDayKey comes from app/page.tsx.
-  // It is based on the entire week, not just
-  // games that are still in the future.
   // --------------------------------------------------
 
   const dayEligibleGames =
@@ -458,10 +468,10 @@ export default function DraftBoard({
   }
 
   // --------------------------------------------------
-  // MAKE PICK
+  // REQUEST PICK CONFIRMATION
   // --------------------------------------------------
 
-  async function makePick(
+  function requestPick(
     game: Game,
     team: string
   ) {
@@ -508,6 +518,62 @@ export default function DraftBoard({
 
       return
     }
+
+    setMessage('')
+
+    setPendingPick({
+      game,
+      team,
+      spread:
+        Number(
+          odds.spread
+        ),
+    })
+  }
+
+  // --------------------------------------------------
+  // CANCEL PICK
+  // --------------------------------------------------
+
+  function cancelPick() {
+    if (submitting) {
+      return
+    }
+
+    setPendingPick(null)
+  }
+
+  // --------------------------------------------------
+  // CONFIRM + MAKE PICK
+  // --------------------------------------------------
+
+  async function confirmPick() {
+    if (
+      !pendingPick ||
+      !currentPlayer
+    ) {
+      return
+    }
+
+    if (!isMyTurn) {
+      setPendingPick(null)
+
+      setMessage(
+        `It is ${currentPlayer.name}'s turn.`
+      )
+
+      return
+    }
+
+    if (submitting) {
+      return
+    }
+
+    const game =
+      pendingPick.game
+
+    const team =
+      pendingPick.team
 
     setSubmitting(true)
     setMessage('')
@@ -565,6 +631,8 @@ export default function DraftBoard({
             'Unable to make pick.'
         )
 
+        setPendingPick(null)
+
         return
       }
 
@@ -581,6 +649,8 @@ export default function DraftBoard({
           },
         ]
       )
+
+      setPendingPick(null)
 
       setSelectedTeam('')
 
@@ -607,11 +677,137 @@ export default function DraftBoard({
   }
 
   // --------------------------------------------------
+  // PENDING PICK OPPONENT
+  // --------------------------------------------------
+
+  let pendingOpponent =
+    ''
+
+  let pendingLocation =
+    ''
+
+  if (pendingPick) {
+    if (
+      pendingPick.team ===
+      pendingPick.game.home_team
+    ) {
+      pendingOpponent =
+        pendingPick.game.away_team
+
+      pendingLocation =
+        'vs'
+    } else {
+      pendingOpponent =
+        pendingPick.game.home_team
+
+      pendingLocation =
+        '@'
+    }
+  }
+
+  // --------------------------------------------------
   // PAGE
   // --------------------------------------------------
 
   return (
     <section className="space-y-6 lg:col-span-2">
+
+      {/* PICK CONFIRMATION MODAL */}
+
+      {pendingPick && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+
+          <div className="w-full max-w-md rounded-2xl border border-cyan-500 bg-slate-950 p-6 shadow-2xl">
+
+            <div className="text-sm font-black uppercase tracking-wide text-cyan-400">
+              Confirm Pick
+            </div>
+
+            <div className="mt-2 text-2xl font-black">
+              Are you sure?
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900 p-5">
+
+              <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                Pick #{pickNumber}
+              </div>
+
+              <div className="mt-1 text-sm font-bold text-slate-400">
+                {
+                  currentPlayer?.name
+                }
+              </div>
+
+              <div className="mt-4 text-2xl font-black text-white">
+                {
+                  pendingPick.team
+                }
+              </div>
+
+              <div className="mt-1 text-3xl font-black text-cyan-300">
+                {formatSpread(
+                  pendingPick.spread
+                )}
+              </div>
+
+              <div className="mt-4 border-t border-slate-800 pt-4">
+
+                <div className="font-bold text-slate-200">
+                  {pendingLocation}{' '}
+                  {pendingOpponent}
+                </div>
+
+                <div className="mt-1 text-sm text-slate-400">
+                  {formatEasternKickoff(
+                    pendingPick.game.start_time
+                  )}
+                </div>
+
+              </div>
+
+            </div>
+
+            <div className="mt-5 rounded-xl border border-amber-800/60 bg-amber-950/30 p-3 text-sm text-amber-200">
+              Once confirmed, this spread locks immediately and the entire game is removed from the draft.
+            </div>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+
+              <button
+                type="button"
+                disabled={
+                  submitting
+                }
+                onClick={
+                  cancelPick
+                }
+                className="min-h-14 rounded-xl border border-slate-700 bg-slate-900 px-5 py-3 font-black text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={
+                  submitting
+                }
+                onClick={
+                  confirmPick
+                }
+                className="min-h-14 rounded-xl bg-emerald-500 px-5 py-3 font-black text-slate-950 hover:bg-emerald-400 disabled:opacity-50"
+              >
+                {submitting
+                  ? 'Saving...'
+                  : 'Confirm Pick'}
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
 
       {/* CURRENT TURN */}
 
@@ -886,20 +1082,17 @@ export default function DraftBoard({
 
                       <button
                         type="button"
-
                         disabled={
                           !isMyTurn ||
                           submitting ||
                           !awayOdds
                         }
-
                         onClick={() =>
-                          makePick(
+                          requestPick(
                             game,
                             game.away_team
                           )
                         }
-
                         className={`rounded-xl border p-4 text-left transition ${
                           isMyTurn &&
                           awayOdds &&
@@ -935,20 +1128,17 @@ export default function DraftBoard({
 
                       <button
                         type="button"
-
                         disabled={
                           !isMyTurn ||
                           submitting ||
                           !homeOdds
                         }
-
                         onClick={() =>
-                          makePick(
+                          requestPick(
                             game,
                             game.home_team
                           )
                         }
-
                         className={`rounded-xl border p-4 text-left transition ${
                           isMyTurn &&
                           homeOdds &&
