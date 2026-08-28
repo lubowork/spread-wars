@@ -16,6 +16,7 @@ async function isAuthorized(
   const cronSecret =
     process.env.CRON_SECRET
 
+  // Allow Supabase Cron
   if (
     cronSecret &&
     authHeader ===
@@ -24,6 +25,8 @@ async function isAuthorized(
     return true
   }
 
+  // Otherwise require a logged-in
+  // Spread Wars player.
   const authSupabase =
     await createClient()
 
@@ -79,68 +82,79 @@ function getMonthStart() {
 }
 
 function getRefreshIntervalMinutes(
-  hoursUntilNextGame: number | null
+  hoursUntilNextGame:
+    number | null
 ) {
-  // No known upcoming game yet.
+  // No upcoming game stored yet.
   // Check twice per day.
   if (
-    hoursUntilNextGame === null
+    hoursUntilNextGame ===
+    null
   ) {
     return 12 * 60
   }
 
   // More than 3 days away
   if (
-    hoursUntilNextGame > 72
+    hoursUntilNextGame >
+    72
   ) {
     return 12 * 60
   }
 
   // 2-3 days away
   if (
-    hoursUntilNextGame > 48
+    hoursUntilNextGame >
+    48
   ) {
     return 8 * 60
   }
 
   // 1-2 days away
   if (
-    hoursUntilNextGame > 24
+    hoursUntilNextGame >
+    24
   ) {
     return 4 * 60
   }
 
   // 12-24 hours away
   if (
-    hoursUntilNextGame > 12
+    hoursUntilNextGame >
+    12
   ) {
     return 2 * 60
   }
 
   // 6-12 hours away
   if (
-    hoursUntilNextGame > 6
+    hoursUntilNextGame >
+    6
   ) {
     return 60
   }
 
   // 3-6 hours away
   if (
-    hoursUntilNextGame > 3
+    hoursUntilNextGame >
+    3
   ) {
     return 30
   }
 
-  // Within 3 hours of kickoff
+  // Within 3 hours
   return 15
 }
 
 function formatReason(
-  hoursUntilNextGame: number | null,
-  refreshMinutes: number
+  hoursUntilNextGame:
+    number | null,
+  refreshMinutes:
+    number
 ) {
   if (
-    hoursUntilNextGame === null
+    hoursUntilNextGame ===
+    null
   ) {
     return `No upcoming stored game found. Refresh window is every ${refreshMinutes} minutes.`
   }
@@ -166,7 +180,8 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          error: 'Unauthorized',
+          error:
+            'Unauthorized',
         },
         {
           status: 401,
@@ -174,9 +189,9 @@ export async function POST(
       )
     }
 
-    // -----------------------------------------------
+    // --------------------------------------------------
     // ACTIVE WEEK
-    // -----------------------------------------------
+    // --------------------------------------------------
 
     const {
       data: week,
@@ -229,9 +244,9 @@ export async function POST(
       })
     }
 
-    // -----------------------------------------------
-    // MONTHLY API BUDGET
-    // -----------------------------------------------
+    // --------------------------------------------------
+    // MONTHLY USAGE HISTORY
+    // --------------------------------------------------
 
     const monthStart =
       getMonthStart()
@@ -254,6 +269,10 @@ export async function POST(
         'called_at',
         monthStart.toISOString()
       )
+      .eq(
+        'endpoint',
+        'odds'
+      )
       .order(
         'called_at',
         {
@@ -267,15 +286,21 @@ export async function POST(
       )
     }
 
-    const oddsUsageRows =
-      (usageRows ?? []).filter(
-        (row) =>
-          row.endpoint ===
-          'odds'
-      )
+    const allOddsUsageRows =
+      usageRows ?? []
+
+    // --------------------------------------------------
+    // MONTHLY BUDGET
+    //
+    // Count successful AND failed paid requests because
+    // an API request may still consume quota even if it
+    // ultimately fails.
+    //
+    // This is intentionally conservative.
+    // --------------------------------------------------
 
     const monthlyOddsCredits =
-      oddsUsageRows.reduce(
+      allOddsUsageRows.reduce(
         (
           total,
           row
@@ -302,9 +327,9 @@ export async function POST(
       })
     }
 
-    // -----------------------------------------------
+    // --------------------------------------------------
     // FIND NEXT UPCOMING STORED GAME
-    // -----------------------------------------------
+    // --------------------------------------------------
 
     const now =
       new Date()
@@ -378,21 +403,35 @@ export async function POST(
         hoursUntilNextGame
       )
 
-    // -----------------------------------------------
-    // WHEN DID WE LAST SPEND AN ODDS CREDIT?
-    // -----------------------------------------------
+    // --------------------------------------------------
+    // LAST SUCCESSFUL ODDS SYNC
+    //
+    // IMPORTANT:
+    // Failed attempts are intentionally ignored here.
+    //
+    // A failed sync must NEVER make the app think the
+    // stored odds are fresh.
+    // --------------------------------------------------
 
-    const lastOddsSync =
-      oddsUsageRows.length > 0
-        ? oddsUsageRows[0]
+    const successfulOddsRows =
+      allOddsUsageRows.filter(
+        (row) =>
+          row.status ===
+          'succeeded'
+      )
+
+    const lastSuccessfulOddsSync =
+      successfulOddsRows.length >
+      0
+        ? successfulOddsRows[0]
         : null
 
     if (
-      lastOddsSync?.called_at
+      lastSuccessfulOddsSync?.called_at
     ) {
       const lastSyncTime =
         new Date(
-          lastOddsSync.called_at
+          lastSuccessfulOddsSync.called_at
         ).getTime()
 
       const minutesSinceLastSync =
@@ -420,34 +459,47 @@ export async function POST(
         return NextResponse.json({
           success: true,
           skipped: true,
+
           reason:
             'Stored odds are fresh enough. No Odds API credit used.',
+
           scheduleReason:
             formatReason(
               hoursUntilNextGame,
               refreshMinutes
             ),
-          minutesSinceLastSync:
+
+          minutesSinceLastSuccessfulSync:
             Math.round(
               minutesSinceLastSync
             ),
+
           refreshMinutes,
+
+          lastSuccessfulSyncAt:
+            new Date(
+              lastSyncTime
+            ).toISOString(),
+
           nextEligibleAt:
             nextEligibleAt.toISOString(),
+
           monthlyOddsCredits,
+
           monthlyOddsBudget:
             MONTHLY_ODDS_BUDGET,
         })
       }
     }
 
-    // -----------------------------------------------
-    // RECORD THE PAID API ATTEMPT
+    // --------------------------------------------------
+    // RECORD PAID API ATTEMPT
     //
-    // We record the attempt BEFORE calling the API.
-    // This intentionally counts failed attempts too,
-    // which gives us a conservative safety margin.
-    // -----------------------------------------------
+    // Record before calling the API so we keep a
+    // complete history even when the request fails.
+    //
+    // FAILED ROWS DO NOT AFFECT THE FRESHNESS COOLDOWN.
+    // --------------------------------------------------
 
     const reason =
       formatReason(
@@ -483,9 +535,9 @@ export async function POST(
       )
     }
 
-    // -----------------------------------------------
+    // --------------------------------------------------
     // PAID ODDS API CALL
-    // -----------------------------------------------
+    // --------------------------------------------------
 
     let games
 
@@ -514,7 +566,6 @@ export async function POST(
       throw error
     }
 
-    // Use one timestamp for the whole snapshot.
     const fetchedAt =
       new Date()
         .toISOString()
@@ -522,9 +573,9 @@ export async function POST(
     let gamesSaved = 0
     let oddsSaved = 0
 
-    // -----------------------------------------------
-    // SAVE GAMES + ODDS TO SUPABASE
-    // -----------------------------------------------
+    // --------------------------------------------------
+    // SAVE GAMES + ODDS
+    // --------------------------------------------------
 
     for (
       const game of games
@@ -611,11 +662,16 @@ export async function POST(
       }
     }
 
-    // -----------------------------------------------
-    // MARK THIS PAID SYNC SUCCESSFUL
-    // -----------------------------------------------
+    // --------------------------------------------------
+    // MARK SUCCESS
+    //
+    // Only this status is considered fresh for the
+    // cooldown calculation on future runs.
+    // --------------------------------------------------
 
-    await supabase
+    const {
+      error: usageUpdateError,
+    } = await supabase
       .from(
         'odds_api_usage'
       )
@@ -628,18 +684,31 @@ export async function POST(
 
         odds_saved:
           oddsSaved,
+
+        error:
+          null,
       })
       .eq(
         'id',
         usageRun.id
       )
 
+    if (usageUpdateError) {
+      console.error(
+        'Usage update error:',
+        usageUpdateError
+      )
+    }
+
     return NextResponse.json({
       success: true,
       skipped: false,
+
       gamesSaved,
       oddsSaved,
+
       refreshMinutes,
+
       hoursUntilNextGame:
         hoursUntilNextGame ===
         null
@@ -649,17 +718,21 @@ export async function POST(
                 2
               )
             ),
+
       monthlyOddsCredits:
         monthlyOddsCredits +
         1,
+
       monthlyOddsBudget:
         MONTHLY_ODDS_BUDGET,
+
       estimatedOddsCreditsRemaining:
         MONTHLY_ODDS_BUDGET -
         (
           monthlyOddsCredits +
           1
         ),
+
       reason,
     })
   } catch (error) {
