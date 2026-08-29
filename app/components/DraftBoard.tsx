@@ -124,6 +124,26 @@ function formatEasternKickoff(
   )
 }
 
+function formatLastSync(
+  isoDate: string
+) {
+  return new Intl.DateTimeFormat(
+    'en-US',
+    {
+      timeZone:
+        'America/New_York',
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    }
+  ).format(
+    new Date(isoDate)
+  )
+}
+
 export default function DraftBoard({
   players,
   games,
@@ -370,6 +390,42 @@ export default function DraftBoard({
           game.id
         )
     )
+
+  // --------------------------------------------------
+  // LAST ODDS SYNC
+  //
+  // Find the newest DraftKings fetched_at timestamp
+  // across all games currently loaded on the board.
+  // --------------------------------------------------
+
+  const allFetchedTimes =
+    games.flatMap(
+      (game) =>
+        game.odds
+          .map(
+            (odd) =>
+              odd.fetched_at
+          )
+          .filter(Boolean)
+    )
+
+  const lastSyncedAt =
+    allFetchedTimes.length > 0
+      ? allFetchedTimes.reduce(
+          (
+            latest,
+            current
+          ) =>
+            new Date(
+              current
+            ).getTime() >
+            new Date(
+              latest
+            ).getTime()
+              ? current
+              : latest
+        )
+      : null
 
   // --------------------------------------------------
   // ALPHABETICAL TEAM DROPDOWN
@@ -1004,13 +1060,35 @@ export default function DraftBoard({
 
       <div>
 
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
 
           <div>
 
             <h2 className="text-2xl font-black">
               Available Games
             </h2>
+
+            <div className="mt-1 text-xs text-slate-500">
+
+              {lastSyncedAt ? (
+                <>
+                  Last synced:{' '}
+                  <span className="font-bold text-slate-300">
+                    {formatLastSync(
+                      lastSyncedAt
+                    )}
+                  </span>
+                </>
+              ) : (
+                <>
+                  Last synced:{' '}
+                  <span className="font-bold text-amber-400">
+                    No odds sync available
+                  </span>
+                </>
+              )}
+
+            </div>
 
             {selectedTeam && (
               <div className="mt-1 text-sm font-bold text-cyan-400">
