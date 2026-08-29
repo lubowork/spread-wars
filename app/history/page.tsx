@@ -35,9 +35,6 @@ type Adjustment = {
   pushes_delta: number
 }
 
-// General finished last season 20 wins ahead.
-// Positive = General leads.
-// Negative = Geoff leads.
 const STARTING_GENERAL_LEAD = 20
 
 function formatSpread(
@@ -50,22 +47,66 @@ function formatSpread(
   return `${spread}`
 }
 
-function resultClasses(
+function resultBadgeClasses(
   result: string
 ) {
   if (result === 'win') {
-    return 'bg-emerald-950 text-emerald-400'
+    return 'bg-emerald-950 text-emerald-300 border border-emerald-800'
   }
 
   if (result === 'loss') {
-    return 'bg-red-950 text-red-400'
+    return 'bg-red-950 text-red-300 border border-red-800'
   }
 
   if (result === 'push') {
-    return 'bg-amber-950 text-amber-400'
+    return 'bg-amber-950 text-amber-300 border border-amber-800'
   }
 
-  return 'bg-slate-800 text-slate-400'
+  return 'bg-slate-800 text-slate-400 border border-slate-700'
+}
+
+function perspectiveClasses(
+  pick: Pick | undefined,
+  loggedInPlayerId: string
+) {
+  if (
+    !pick ||
+    pick.result === 'pending' ||
+    pick.result === 'push'
+  ) {
+    return 'border-slate-700 bg-slate-950/70'
+  }
+
+  const isMyPick =
+    pick.player_id ===
+    loggedInPlayerId
+
+  const favorable =
+    (
+      isMyPick &&
+      pick.result === 'win'
+    ) ||
+    (
+      !isMyPick &&
+      pick.result === 'loss'
+    )
+
+  if (favorable) {
+    return 'border-emerald-700 bg-emerald-950/40'
+  }
+
+  return 'border-red-800 bg-red-950/40'
+}
+
+function getPickForPlayer(
+  picks: Pick[],
+  playerId: string
+) {
+  return picks.find(
+    (pick) =>
+      pick.player_id ===
+      playerId
+  )
 }
 
 export default async function HistoryPage() {
@@ -89,7 +130,7 @@ export default async function HistoryPage() {
     createAdminClient()
 
   // --------------------------------------------------
-  // VERIFY THIS LOGIN IS A PLAYER
+  // VERIFY LOGIN
   // --------------------------------------------------
 
   const {
@@ -224,8 +265,24 @@ export default async function HistoryPage() {
   const players =
     (playersData ?? []) as Player[]
 
+  const geoff =
+    players.find(
+      (player) =>
+        player.name
+          .toLowerCase() ===
+        'geoff'
+    )
+
+  const general =
+    players.find(
+      (player) =>
+        player.name
+          .toLowerCase() ===
+        'general'
+    )
+
   // --------------------------------------------------
-  // ALL WEEKS FOR SEASON
+  // ALL WEEKS
   // --------------------------------------------------
 
   const {
@@ -268,7 +325,7 @@ export default async function HistoryPage() {
     )
 
   // --------------------------------------------------
-  // ALL PICKS FOR THE SEASON
+  // PICKS
   // --------------------------------------------------
 
   let picks: Pick[] = []
@@ -432,79 +489,31 @@ export default async function HistoryPage() {
         }
       }
     )
-      .sort(
-        (a, b) =>
-          b.percentage -
-          a.percentage
-      )
-
-  // --------------------------------------------------
-  // OVERALL RUNNING TALLY
-  //
-  // General begins this season +20.
-  //
-  // Example:
-  // General starts +20.
-  // Geoff wins 20 this season.
-  // General wins 10 this season.
-  // Geoff gains 10.
-  // New running tally = General +10.
-  // --------------------------------------------------
-
-  const generalStanding =
-    standings.find(
-      (standing) =>
-        standing.player.name
-          .trim()
-          .toLowerCase() ===
-        'general'
-    )
 
   const geoffStanding =
     standings.find(
       (standing) =>
-        standing.player.name
-          .trim()
-          .toLowerCase() ===
-        'geoff'
+        standing.player.id ===
+        geoff?.id
     )
 
-  const generalSeasonWins =
-    generalStanding?.wins ?? 0
+  const generalStanding =
+    standings.find(
+      (standing) =>
+        standing.player.id ===
+        general?.id
+    )
 
   const geoffSeasonWins =
     geoffStanding?.wins ?? 0
+
+  const generalSeasonWins =
+    generalStanding?.wins ?? 0
 
   const runningGeneralLead =
     STARTING_GENERAL_LEAD +
     generalSeasonWins -
     geoffSeasonWins
-
-  let overallLeader =
-    'Tied'
-
-  let overallLeadAmount =
-    0
-
-  if (
-    runningGeneralLead > 0
-  ) {
-    overallLeader =
-      'General'
-
-    overallLeadAmount =
-      runningGeneralLead
-  } else if (
-    runningGeneralLead < 0
-  ) {
-    overallLeader =
-      'Geoff'
-
-    overallLeadAmount =
-      Math.abs(
-        runningGeneralLead
-      )
-  }
 
   // --------------------------------------------------
   // PAGE
@@ -551,7 +560,7 @@ export default async function HistoryPage() {
 
         </header>
 
-        {/* SEASON STANDINGS */}
+        {/* SEASON RECORDS + OVERALL */}
 
         <section className="mb-8">
 
@@ -561,126 +570,146 @@ export default async function HistoryPage() {
 
           <div className="grid gap-4 md:grid-cols-3">
 
-            {/* PLAYER STANDINGS */}
+            {[
+              geoffStanding,
+              generalStanding,
+            ]
+              .filter(Boolean)
+              .map(
+                (standing) => (
+                  <div
+                    key={
+                      standing!.player.id
+                    }
+                    className="rounded-2xl border border-slate-800 bg-slate-900 p-6"
+                  >
 
-            {standings.map(
-              (
-                standing,
-                index
-              ) => (
-                <div
-                  key={
-                    standing.player.id
-                  }
-                  className={`rounded-2xl border p-6 ${
-                    index === 0 &&
-                    standing.wins +
-                      standing.losses >
-                      0
-                      ? 'border-cyan-500 bg-cyan-950/30'
-                      : 'border-slate-800 bg-slate-900'
-                  }`}
-                >
-
-                  <div className="flex items-start justify-between gap-4">
-
-                    <div>
-
-                      <div className="text-2xl font-black">
-                        {
-                          standing.player.name
-                        }
-                      </div>
-
-                      <div className="mt-1 text-sm text-slate-400">
-                        Season Record
-                      </div>
-
+                    <div className="text-2xl font-black">
+                      {
+                        standing!.player.name
+                      }
                     </div>
 
-                    {index === 0 &&
-                      standing.wins +
-                        standing.losses >
-                        0 && (
-                        <span className="rounded-full bg-cyan-500 px-3 py-1 text-xs font-black uppercase text-slate-950">
-                          Leader
-                        </span>
-                      )}
+                    <div className="mt-1 text-sm text-slate-400">
+                      Season Record
+                    </div>
 
-                  </div>
-
-                  <div className="mt-5 text-4xl font-black">
-                    {
-                      standing.wins
-                    }
-                    -
-                    {
-                      standing.losses
-                    }
-                    -
-                    {
-                      standing.pushes
-                    }
-                  </div>
-
-                  <div className="mt-2 text-sm text-slate-400">
-                    {(
-                      standing.percentage *
-                      100
-                    ).toFixed(1)}
-                    % winning percentage
-                  </div>
-
-                </div>
-              )
-            )}
-
-            {/* OVERALL RUNNING TALLY */}
-
-            <div className="rounded-2xl border border-amber-500/70 bg-amber-950/20 p-6">
-
-              <div>
-
-                <div className="text-2xl font-black">
-                  Overall Tally
-                </div>
-
-                <div className="mt-1 text-sm text-slate-400">
-                  Running lead
-                </div>
-
-              </div>
-
-              <div className="mt-5">
-
-                {overallLeader ===
-                'Tied' ? (
-                  <div className="text-4xl font-black text-amber-400">
-                    Tied
-                  </div>
-                ) : (
-                  <>
-                    <div className="text-4xl font-black text-amber-400">
+                    <div className="mt-5 text-4xl font-black">
                       {
-                        overallLeader
-                      }{' '}
-                      +
+                        standing!.wins
+                      }
+                      -
                       {
-                        overallLeadAmount
+                        standing!.losses
+                      }
+                      -
+                      {
+                        standing!.pushes
                       }
                     </div>
 
                     <div className="mt-2 text-sm text-slate-400">
-                      Overall games ahead
+                      {(
+                        standing!.percentage *
+                        100
+                      ).toFixed(1)}
+                      % winning percentage
                     </div>
+
+                  </div>
+                )
+              )}
+
+            {/* OVERALL TALLY */}
+
+            <div className="rounded-2xl border border-amber-700/60 bg-amber-950/30 p-6">
+
+              <div className="text-2xl font-black">
+                Overall Tally
+              </div>
+
+              <div className="mt-1 text-sm text-amber-200/70">
+                All-time rivalry
+              </div>
+
+              <div className="mt-5 text-4xl font-black text-amber-300">
+
+                {runningGeneralLead >
+                0 ? (
+                  <>
+                    General +
+                    {
+                      runningGeneralLead
+                    }
                   </>
+                ) : runningGeneralLead <
+                  0 ? (
+                  <>
+                    Geoff +
+                    {Math.abs(
+                      runningGeneralLead
+                    )}
+                  </>
+                ) : (
+                  <>Tied</>
                 )}
 
               </div>
 
-              <div className="mt-5 border-t border-amber-900/60 pt-4 text-xs text-slate-500">
-                Started this season with General +20
+              <div className="mt-2 text-sm text-amber-100/70">
+                {runningGeneralLead ===
+                0
+                  ? 'Overall games are tied.'
+                  : 'Overall games ahead'}
               </div>
+
+              <div className="mt-3 text-xs text-amber-200/60">
+                Started this season with General +20.
+              </div>
+
+            </div>
+
+          </div>
+
+        </section>
+
+        {/* COLOR KEY */}
+
+        <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-4">
+
+          <div className="flex flex-wrap items-center gap-4 text-sm">
+
+            <div className="font-black text-slate-300">
+              From your perspective:
+            </div>
+
+            <div className="flex items-center gap-2">
+
+              <span className="h-3 w-3 rounded-full bg-emerald-500" />
+
+              <span className="text-slate-400">
+                Good for you
+              </span>
+
+            </div>
+
+            <div className="flex items-center gap-2">
+
+              <span className="h-3 w-3 rounded-full bg-red-500" />
+
+              <span className="text-slate-400">
+                Bad for you
+              </span>
+
+            </div>
+
+            <div className="flex items-center gap-2">
+
+              <span className="h-3 w-3 rounded-full bg-slate-600" />
+
+              <span className="text-slate-400">
+                Pending / Push
+              </span>
 
             </div>
 
@@ -792,6 +821,55 @@ export default async function HistoryPage() {
                         }
                       )
 
+                    const automaticPicks =
+                      [...weekPicks]
+                        .filter(
+                          (pick) =>
+                            pick.is_automatic
+                        )
+                        .sort(
+                          (a, b) =>
+                            a.pick_number -
+                            b.pick_number
+                        )
+
+                    const normalPicks =
+                      [...weekPicks]
+                        .filter(
+                          (pick) =>
+                            !pick.is_automatic
+                        )
+                        .sort(
+                          (a, b) =>
+                            a.pick_number -
+                            b.pick_number
+                        )
+
+                    const normalRounds:
+                      Pick[][] = []
+
+                    for (
+                      let i = 0;
+                      i <
+                      normalPicks.length;
+                      i += 2
+                    ) {
+                      normalRounds.push(
+                        normalPicks.slice(
+                          i,
+                          i + 2
+                        )
+                      )
+                    }
+
+                    const orderedPlayers =
+                      [
+                        geoff,
+                        general,
+                      ].filter(
+                        Boolean
+                      ) as Player[]
+
                     return (
                       <article
                         key={
@@ -842,7 +920,7 @@ export default async function HistoryPage() {
 
                             </div>
 
-                            <div className="flex gap-3">
+                            <div className="flex flex-wrap gap-3">
 
                               {weekRecords.map(
                                 (
@@ -885,102 +963,225 @@ export default async function HistoryPage() {
 
                         </div>
 
-                        {/* PICKS */}
-
                         {weekPicks.length ===
                         0 ? (
                           <div className="p-6 text-slate-500">
                             No picks recorded for this week.
                           </div>
                         ) : (
-                          <div className="divide-y divide-slate-800">
+                          <div className="space-y-5 p-4 sm:p-6">
 
-                            {[...weekPicks]
-                              .sort(
-                                (
-                                  a,
-                                  b
-                                ) =>
-                                  a.pick_number -
-                                  b.pick_number
-                              )
-                              .map(
-                                (
-                                  pick
-                                ) => {
-                                  const player =
-                                    players.find(
-                                      (
-                                        item
-                                      ) =>
-                                        item.id ===
-                                        pick.player_id
-                                    )
+                            {/* AUTOMATIC PICKS */}
 
-                                  return (
-                                    <div
-                                      key={
-                                        pick.id
-                                      }
-                                      className="flex flex-wrap items-center justify-between gap-4 p-4 sm:px-6"
-                                    >
+                            {automaticPicks.length >
+                              0 && (
+                              <div>
 
-                                      <div className="flex items-center gap-4">
+                                <div className="mb-2 text-xs font-black uppercase tracking-wide text-cyan-400">
+                                  Automatic Picks
+                                </div>
 
-                                        <div className="w-16 text-sm font-black text-slate-500">
-                                          #
-                                          {
-                                            pick.pick_number
+                                <div className="grid gap-2 sm:grid-cols-2">
+
+                                  {orderedPlayers.map(
+                                    (
+                                      player
+                                    ) => {
+                                      const pick =
+                                        getPickForPlayer(
+                                          automaticPicks,
+                                          player.id
+                                        )
+
+                                      return (
+                                        <div
+                                          key={
+                                            player.id
                                           }
-                                        </div>
+                                          className={`min-w-0 rounded-xl border p-4 ${perspectiveClasses(
+                                            pick,
+                                            loggedInPlayer.id
+                                          )}`}
+                                        >
 
-                                        <div>
+                                          <div className="flex items-center justify-between gap-2">
 
-                                          <div className="flex flex-wrap items-center gap-2">
-
-                                            <span className="font-black">
+                                            <div className="text-xs font-black uppercase tracking-wide text-slate-400">
                                               {
-                                                pick.team
+                                                player.name
                                               }
-                                            </span>
+                                            </div>
 
-                                            {pick.is_automatic && (
-                                              <span className="rounded-full bg-cyan-950 px-2 py-1 text-[10px] font-black uppercase text-cyan-400">
-                                                Auto
+                                            {pick && (
+                                              <span className="text-xs font-bold text-slate-500">
+                                                #
+                                                {
+                                                  pick.pick_number
+                                                }
                                               </span>
                                             )}
 
                                           </div>
 
-                                          <div className="mt-1 text-sm text-slate-400">
-                                            {player?.name ??
-                                              'Unknown'}
-                                            {' · '}
-                                            {formatSpread(
-                                              Number(
-                                                pick.spread
-                                              )
-                                            )}
-                                          </div>
+                                          {pick ? (
+                                            <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+
+                                              <div className="min-w-0">
+
+                                                <div className="truncate text-lg font-black">
+                                                  {
+                                                    pick.team
+                                                  }
+                                                </div>
+
+                                                <div className="mt-1 text-xl font-black text-cyan-300">
+                                                  {formatSpread(
+                                                    Number(
+                                                      pick.spread
+                                                    )
+                                                  )}
+                                                </div>
+
+                                              </div>
+
+                                              <span
+                                                className={`rounded-full px-3 py-1 text-xs font-black uppercase ${resultBadgeClasses(
+                                                  pick.result
+                                                )}`}
+                                              >
+                                                {
+                                                  pick.result
+                                                }
+                                              </span>
+
+                                            </div>
+                                          ) : (
+                                            <div className="mt-3 text-sm text-slate-500">
+                                              Waiting for pick
+                                            </div>
+                                          )}
 
                                         </div>
+                                      )
+                                    }
+                                  )}
 
-                                      </div>
+                                </div>
 
-                                      <span
-                                        className={`rounded-full px-3 py-1 text-xs font-black uppercase ${resultClasses(
-                                          pick.result
-                                        )}`}
-                                      >
-                                        {
-                                          pick.result
-                                        }
-                                      </span>
+                              </div>
+                            )}
 
-                                    </div>
-                                  )
-                                }
-                              )}
+                            {/* NORMAL DRAFT ROUNDS */}
+
+                            {normalRounds.map(
+                              (
+                                round,
+                                index
+                              ) => (
+                                <div
+                                  key={
+                                    `round-${index}`
+                                  }
+                                >
+
+                                  <div className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">
+                                    Draft Round{' '}
+                                    {
+                                      index +
+                                      1
+                                    }
+                                  </div>
+
+                                  <div className="grid gap-2 sm:grid-cols-2">
+
+                                    {orderedPlayers.map(
+                                      (
+                                        player
+                                      ) => {
+                                        const pick =
+                                          getPickForPlayer(
+                                            round,
+                                            player.id
+                                          )
+
+                                        return (
+                                          <div
+                                            key={
+                                              player.id
+                                            }
+                                            className={`min-w-0 rounded-xl border p-4 ${perspectiveClasses(
+                                              pick,
+                                              loggedInPlayer.id
+                                            )}`}
+                                          >
+
+                                            <div className="flex items-center justify-between gap-2">
+
+                                              <div className="text-xs font-black uppercase tracking-wide text-slate-400">
+                                                {
+                                                  player.name
+                                                }
+                                              </div>
+
+                                              {pick && (
+                                                <span className="text-xs font-bold text-slate-500">
+                                                  #
+                                                  {
+                                                    pick.pick_number
+                                                  }
+                                                </span>
+                                              )}
+
+                                            </div>
+
+                                            {pick ? (
+                                              <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+
+                                                <div className="min-w-0">
+
+                                                  <div className="truncate text-lg font-black">
+                                                    {
+                                                      pick.team
+                                                    }
+                                                  </div>
+
+                                                  <div className="mt-1 text-xl font-black text-cyan-300">
+                                                    {formatSpread(
+                                                      Number(
+                                                        pick.spread
+                                                      )
+                                                    )}
+                                                  </div>
+
+                                                </div>
+
+                                                <span
+                                                  className={`rounded-full px-3 py-1 text-xs font-black uppercase ${resultBadgeClasses(
+                                                    pick.result
+                                                  )}`}
+                                                >
+                                                  {
+                                                    pick.result
+                                                  }
+                                                </span>
+
+                                              </div>
+                                            ) : (
+                                              <div className="mt-3 text-sm text-slate-500">
+                                                Waiting for pick
+                                              </div>
+                                            )}
+
+                                          </div>
+                                        )
+                                      }
+                                    )}
+
+                                  </div>
+
+                                </div>
+                              )
+                            )}
 
                           </div>
                         )}
@@ -995,7 +1196,7 @@ export default async function HistoryPage() {
 
         </section>
 
-        {/* BOTTOM BACK BUTTON */}
+        {/* BACK */}
 
         <div className="mt-8 pb-8">
 
