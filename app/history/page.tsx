@@ -53,7 +53,9 @@ type Record = {
 
 const STARTING_GENERAL_LEAD = 20
 
-function formatSpread(spread: number) {
+function formatSpread(
+  spread: number
+) {
   if (spread > 0) {
     return `+${spread}`
   }
@@ -65,7 +67,9 @@ function formatSpread(spread: number) {
   return `${spread}`
 }
 
-function resultBadgeClasses(result: string) {
+function resultBadgeClasses(
+  result: string
+) {
   if (result === 'win') {
     return 'border border-emerald-700 bg-emerald-950 text-emerald-300'
   }
@@ -97,8 +101,10 @@ function perspectiveClasses(
     pick.player_id === loggedInPlayerId
 
   const goodForMe =
-    (isMyPick && pick.result === 'win') ||
-    (!isMyPick && pick.result === 'loss')
+    (isMyPick &&
+      pick.result === 'win') ||
+    (!isMyPick &&
+      pick.result === 'loss')
 
   if (goodForMe) {
     return 'border-emerald-600 bg-emerald-950/40'
@@ -252,7 +258,7 @@ function calculateHeadToHeadRecord(
   }
 }
 
-function PickBox({
+function PickMatchupRow({
   player,
   pick,
   games,
@@ -275,23 +281,17 @@ function PickBox({
     null
 
   if (pick && game) {
-    if (
-      pick.team === game.home_team
-    ) {
-      opponentTeam =
-        game.away_team
+    if (pick.team === game.home_team) {
+      opponentTeam = game.away_team
     } else if (
       pick.team === game.away_team
     ) {
-      opponentTeam =
-        game.home_team
+      opponentTeam = game.home_team
     }
   }
 
   const selectedSpread =
-    pick
-      ? Number(pick.spread)
-      : 0
+    pick ? Number(pick.spread) : 0
 
   const opponentSpread =
     selectedSpread === 0
@@ -313,42 +313,43 @@ function PickBox({
     )
 
   const hasFinalScore =
-    game?.completed &&
-    pickedTeamScore !== null &&
-    opponentScore !== null
+    Boolean(
+      game?.completed &&
+        pickedTeamScore !== null &&
+        opponentScore !== null
+    )
 
   return (
     <div
-      className={`min-w-0 rounded-xl border p-3 sm:p-4 ${perspectiveClasses(
+      className={`rounded-2xl border p-4 sm:p-5 ${perspectiveClasses(
         pick,
         loggedInPlayerId
       )}`}
     >
 
-      <div className="flex min-w-0 items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
 
-        <div className="shrink-0 text-xs font-black uppercase tracking-wide text-slate-300">
-          {player.id === loggedInPlayerId
-            ? `${player.name} · YOU`
+        <div className="text-xs font-black uppercase tracking-wide text-slate-300">
+          {player.id ===
+          loggedInPlayerId
+            ? `${player.name} · You`
             : player.name}
         </div>
 
         {pick && (
-          <>
-            <div className="min-w-0 flex-1 truncate text-sm font-black text-white">
-              {pick.team}
-            </div>
+          <div className="flex items-center gap-3">
 
-            <div className="shrink-0 text-lg font-black text-cyan-300">
+            <div className="text-sm font-black text-cyan-300">
               {formatSpread(
                 selectedSpread
               )}
             </div>
 
-            <div className="shrink-0 text-xs font-bold text-slate-500">
+            <div className="text-xs font-bold text-slate-500">
               #{pick.pick_number}
             </div>
-          </>
+
+          </div>
         )}
 
       </div>
@@ -358,41 +359,44 @@ function PickBox({
           Waiting for pick
         </div>
       ) : (
-        <div className="mt-3">
+        <>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <div className="min-w-0 truncate text-lg font-black text-white">
+              {pick.team}
+            </div>
 
-          <div className="mb-2 flex justify-end pr-1 text-xs font-bold text-slate-300">
-            {hasFinalScore
-              ? 'Final Score'
-              : 'Score'}
+            <div className="text-xs font-bold uppercase tracking-wide text-slate-300">
+              {hasFinalScore
+                ? 'Final Score'
+                : 'Matchup'}
+            </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
 
             {/* PICKED TEAM - LEFT */}
 
-            <div className="rounded-lg bg-black/20 px-3 py-3">
+            <div className="rounded-xl bg-black/20 px-4 py-4">
 
-              <div className="grid grid-cols-[1fr_auto] items-center gap-4">
+              <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                Pick
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
 
                 <div className="min-w-0">
-
-                  <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                    Pick
-                  </div>
-
-                  <div className="mt-1 truncate font-black text-white">
+                  <div className="truncate text-lg font-black text-white">
                     {pick.team}
                   </div>
 
-                  <div className="mt-1 text-sm font-black text-cyan-300">
+                  <div className="mt-1 text-xl font-black text-cyan-300">
                     {formatSpread(
                       selectedSpread
                     )}
                   </div>
-
                 </div>
 
-                <div className="min-w-8 text-right text-xl font-black text-white">
+                <div className="shrink-0 text-3xl font-black text-white">
                   {pickedTeamScore !== null
                     ? pickedTeamScore
                     : '—'}
@@ -404,32 +408,30 @@ function PickBox({
 
             {/* OPPONENT - RIGHT */}
 
-            <div className="rounded-lg border border-white/10 bg-black/10 px-3 py-3">
+            <div className="rounded-xl border border-white/10 bg-black/10 px-4 py-4">
 
-              <div className="grid grid-cols-[1fr_auto] items-center gap-4">
+              <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                Opponent
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
 
                 <div className="min-w-0">
-
-                  <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                    Opponent
-                  </div>
-
-                  <div className="mt-1 truncate font-bold text-slate-200">
+                  <div className="truncate text-lg font-black text-slate-100">
                     {opponentTeam ??
                       'Opponent unavailable'}
                   </div>
 
-                  <div className="mt-1 text-sm font-black text-slate-400">
+                  <div className="mt-1 text-xl font-black text-slate-400">
                     {opponentTeam
                       ? formatSpread(
                           opponentSpread
                         )
                       : '—'}
                   </div>
-
                 </div>
 
-                <div className="min-w-8 text-right text-xl font-black text-white">
+                <div className="shrink-0 text-3xl font-black text-white">
                   {opponentScore !== null
                     ? opponentScore
                     : '—'}
@@ -456,8 +458,7 @@ function PickBox({
             </span>
 
           </div>
-
-        </div>
+        </>
       )}
 
     </div>
@@ -481,7 +482,7 @@ export default async function HistoryPage() {
     createAdminClient()
 
   const {
-    data: loggedInPlayer,
+    data: loggedInPlayerData,
     error: loggedInPlayerError,
   } = await supabase
     .from('players')
@@ -497,7 +498,7 @@ export default async function HistoryPage() {
 
   if (
     loggedInPlayerError ||
-    !loggedInPlayer
+    !loggedInPlayerData
   ) {
     return (
       <main className="min-h-screen bg-slate-950 p-6 text-white">
@@ -513,20 +514,23 @@ export default async function HistoryPage() {
           </div>
 
           <div className="mt-8 pb-8">
-
             <a
               href="/"
               className="flex min-h-14 w-full items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 px-5 py-4 text-center text-base font-black text-white transition hover:bg-slate-800"
             >
               ← Back to Spread Wars
             </a>
-
           </div>
 
         </div>
 
       </main>
     )
+  }
+
+  const loggedInPlayer: Player = {
+    id: loggedInPlayerData.id,
+    name: loggedInPlayerData.name,
   }
 
   const {
@@ -568,14 +572,12 @@ export default async function HistoryPage() {
           </div>
 
           <div className="mt-8 pb-8">
-
             <a
               href="/"
               className="flex min-h-14 w-full items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 px-5 py-4 text-center text-base font-black text-white transition hover:bg-slate-800"
             >
               ← Back to Spread Wars
             </a>
-
           </div>
 
         </div>
@@ -609,30 +611,29 @@ export default async function HistoryPage() {
       (player) =>
         player.id !==
         loggedInPlayer.id
-    )
+    ) ?? null
 
-  const displayPlayers: Player[] = [
-    loggedInPlayer,
-    ...(opponent
-      ? [opponent]
-      : []),
-  ]
+  const displayPlayers: Player[] =
+    opponent
+      ? [
+          loggedInPlayer,
+          opponent,
+        ]
+      : [loggedInPlayer]
 
   const geoff =
     players.find(
       (player) =>
-        player.name
-          .toLowerCase() ===
+        player.name.toLowerCase() ===
         'geoff'
-    )
+    ) ?? null
 
   const general =
     players.find(
       (player) =>
-        player.name
-          .toLowerCase() ===
+        player.name.toLowerCase() ===
         'general'
-    )
+    ) ?? null
 
   const {
     data: weeksData,
@@ -669,8 +670,7 @@ export default async function HistoryPage() {
 
   const weekIds =
     weeks.map(
-      (week) =>
-        week.id
+      (week) => week.id
     )
 
   let picks: Pick[] = []
@@ -822,18 +822,22 @@ export default async function HistoryPage() {
     )
 
   const geoffStanding =
-    standings.find(
-      (standing) =>
-        standing.player.id ===
-        geoff?.id
-    )
+    geoff
+      ? standings.find(
+          (standing) =>
+            standing.player.id ===
+            geoff.id
+        ) ?? null
+      : null
 
   const generalStanding =
-    standings.find(
-      (standing) =>
-        standing.player.id ===
-        general?.id
-    )
+    general
+      ? standings.find(
+          (standing) =>
+            standing.player.id ===
+            general.id
+        ) ?? null
+      : null
 
   const geoffSeasonWins =
     geoffStanding?.wins ?? 0
@@ -856,7 +860,6 @@ export default async function HistoryPage() {
           <div className="flex flex-wrap items-end justify-between gap-4">
 
             <div>
-
               <h1 className="text-4xl font-black sm:text-5xl">
                 Season History
               </h1>
@@ -864,11 +867,9 @@ export default async function HistoryPage() {
               <p className="mt-2 text-slate-400">
                 {season.year} Spread Wars
               </p>
-
             </div>
 
             <div className="rounded-xl border border-slate-800 bg-slate-900 px-4 py-3">
-
               <div className="text-xs uppercase text-slate-500">
                 Signed In
               </div>
@@ -876,7 +877,6 @@ export default async function HistoryPage() {
               <div className="font-black text-emerald-400">
                 {loggedInPlayer.name}
               </div>
-
             </div>
 
           </div>
@@ -891,10 +891,7 @@ export default async function HistoryPage() {
 
           <div className="grid gap-4 md:grid-cols-3">
 
-            {[
-              generalStanding,
-              geoffStanding,
-            ]
+            {[geoffStanding, generalStanding]
               .filter(Boolean)
               .map(
                 (standing) => (
@@ -904,7 +901,6 @@ export default async function HistoryPage() {
                     }
                     className="rounded-2xl border border-slate-800 bg-slate-900 p-6"
                   >
-
                     <div className="text-2xl font-black">
                       {
                         standing!.player.name
@@ -916,10 +912,8 @@ export default async function HistoryPage() {
                     </div>
 
                     <div className="mt-5 text-4xl font-black">
-                      {standing!.wins}
-                      -
-                      {standing!.losses}
-                      -
+                      {standing!.wins}-
+                      {standing!.losses}-
                       {standing!.pushes}
                     </div>
 
@@ -930,7 +924,6 @@ export default async function HistoryPage() {
                       ).toFixed(1)}
                       % winning percentage
                     </div>
-
                   </div>
                 )
               )}
@@ -946,7 +939,6 @@ export default async function HistoryPage() {
               </div>
 
               <div className="mt-5 text-4xl font-black text-amber-300">
-
                 {runningGeneralLead >
                 0 ? (
                   <>
@@ -964,7 +956,6 @@ export default async function HistoryPage() {
                 ) : (
                   <>Tied</>
                 )}
-
               </div>
 
               <div className="mt-2 text-sm text-amber-100/70">
@@ -990,33 +981,27 @@ export default async function HistoryPage() {
             </div>
 
             <div className="flex items-center gap-2">
-
               <span className="h-3 w-3 rounded-full bg-emerald-500" />
 
               <span className="text-slate-400">
                 Good for you
               </span>
-
             </div>
 
             <div className="flex items-center gap-2">
-
               <span className="h-3 w-3 rounded-full bg-red-500" />
 
               <span className="text-slate-400">
                 Bad for you
               </span>
-
             </div>
 
             <div className="flex items-center gap-2">
-
               <span className="h-3 w-3 rounded-full bg-slate-600" />
 
               <span className="text-slate-400">
                 Pending / Push
               </span>
-
             </div>
 
           </div>
@@ -1103,8 +1088,8 @@ export default async function HistoryPage() {
                             b.pick_number
                         )
 
-                    const normalRounds:
-                      Pick[][] = []
+                    const normalRounds: Pick[][] =
+                      []
 
                     for (
                       let i = 0;
@@ -1181,10 +1166,8 @@ export default async function HistoryPage() {
                                     </div>
 
                                     <div className="mt-1 font-black">
-                                      {record.wins}
-                                      -
-                                      {record.losses}
-                                      -
+                                      {record.wins}-
+                                      {record.losses}-
                                       {record.pushes}
                                     </div>
 
@@ -1206,34 +1189,20 @@ export default async function HistoryPage() {
                         ) : (
                           <div className="space-y-5 p-4 sm:p-6">
 
-                            <div className="grid grid-cols-2 gap-2">
-
-                              <div className="rounded-lg bg-slate-800/70 px-3 py-2 text-xs font-black uppercase tracking-wide text-emerald-400">
-                                {loggedInPlayer.name}
-                              </div>
-
-                              <div className="rounded-lg bg-slate-800/70 px-3 py-2 text-right text-xs font-black uppercase tracking-wide text-slate-400">
-                                {opponent?.name ??
-                                  'Opponent'}
-                              </div>
-
-                            </div>
-
                             {automaticPicks.length >
                               0 && (
                               <div>
 
-                                <div className="mb-2 text-xs font-black uppercase tracking-wide text-cyan-400">
+                                <div className="mb-3 text-xs font-black uppercase tracking-wide text-cyan-400">
                                   Automatic Picks
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-2">
-
+                                <div className="space-y-3">
                                   {displayPlayers.map(
                                     (player) => (
-                                      <PickBox
+                                      <PickMatchupRow
                                         key={
-                                          player.id
+                                          `auto-${player.id}`
                                         }
                                         player={
                                           player
@@ -1251,7 +1220,6 @@ export default async function HistoryPage() {
                                       />
                                     )
                                   )}
-
                                 </div>
 
                               </div>
@@ -1266,21 +1234,18 @@ export default async function HistoryPage() {
                                   key={`round-${index}`}
                                 >
 
-                                  <div className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">
+                                  <div className="mb-3 text-xs font-black uppercase tracking-wide text-slate-500">
                                     Draft Round{' '}
                                     {index + 1}
                                   </div>
 
-                                  <div className="grid grid-cols-2 gap-2">
-
+                                  <div className="space-y-3">
                                     {displayPlayers.map(
                                       (
                                         player
                                       ) => (
-                                        <PickBox
-                                          key={
-                                            player.id
-                                          }
+                                        <PickMatchupRow
+                                          key={`${index}-${player.id}`}
                                           player={
                                             player
                                           }
@@ -1297,7 +1262,6 @@ export default async function HistoryPage() {
                                         />
                                       )
                                     )}
-
                                   </div>
 
                                 </div>
@@ -1318,14 +1282,12 @@ export default async function HistoryPage() {
         </section>
 
         <div className="mt-8 pb-8">
-
           <a
             href="/"
             className="flex min-h-14 w-full items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 px-5 py-4 text-center text-base font-black text-white transition hover:bg-slate-800"
           >
             ← Back to Spread Wars
           </a>
-
         </div>
 
       </div>
