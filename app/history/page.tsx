@@ -16,10 +16,20 @@ type Week = {
   ends_at: string | null
 }
 
+type Game = {
+  id: string
+  home_team: string
+  away_team: string
+  completed: boolean
+  home_score: number | null
+  away_score: number | null
+}
+
 type Pick = {
   id: string
   week_id: string
   player_id: string
+  game_id: string
   pick_number: number
   team: string
   spread: number
@@ -35,34 +45,40 @@ type Adjustment = {
   pushes_delta: number
 }
 
+type Record = {
+  wins: number
+  losses: number
+  pushes: number
+}
+
 const STARTING_GENERAL_LEAD = 20
 
-function formatSpread(
-  spread: number
-) {
+function formatSpread(spread: number) {
   if (spread > 0) {
     return `+${spread}`
+  }
+
+  if (spread === 0) {
+    return 'PK'
   }
 
   return `${spread}`
 }
 
-function resultBadgeClasses(
-  result: string
-) {
+function resultBadgeClasses(result: string) {
   if (result === 'win') {
-    return 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+    return 'border border-emerald-700 bg-emerald-950 text-emerald-300'
   }
 
   if (result === 'loss') {
-    return 'bg-red-950 text-red-300 border border-red-800'
+    return 'border border-red-700 bg-red-950 text-red-300'
   }
 
   if (result === 'push') {
-    return 'bg-amber-950 text-amber-300 border border-amber-800'
+    return 'border border-amber-700 bg-amber-950 text-amber-300'
   }
 
-  return 'bg-slate-800 text-slate-400 border border-slate-700'
+  return 'border border-slate-700 bg-slate-800 text-slate-400'
 }
 
 function perspectiveClasses(
@@ -78,24 +94,17 @@ function perspectiveClasses(
   }
 
   const isMyPick =
-    pick.player_id ===
-    loggedInPlayerId
+    pick.player_id === loggedInPlayerId
 
-  const favorable =
-    (
-      isMyPick &&
-      pick.result === 'win'
-    ) ||
-    (
-      !isMyPick &&
-      pick.result === 'loss'
-    )
+  const goodForMe =
+    (isMyPick && pick.result === 'win') ||
+    (!isMyPick && pick.result === 'loss')
 
-  if (favorable) {
-    return 'border-emerald-700 bg-emerald-950/40'
+  if (goodForMe) {
+    return 'border-emerald-600 bg-emerald-950/40'
   }
 
-  return 'border-red-800 bg-red-950/40'
+  return 'border-red-700 bg-red-950/40'
 }
 
 function getPickForPlayer(
@@ -104,14 +113,383 @@ function getPickForPlayer(
 ) {
   return picks.find(
     (pick) =>
-      pick.player_id ===
+      pick.player_id === playerId
+  )
+}
+
+function getGameForPick(
+  pick: Pick,
+  games: Game[]
+) {
+  return games.find(
+    (game) =>
+      game.id === pick.game_id
+  )
+}
+
+function getScoreForTeam(
+  game: Game | undefined,
+  team: string | null
+) {
+  if (
+    !game ||
+    !team ||
+    !game.completed
+  ) {
+    return null
+  }
+
+  if (team === game.home_team) {
+    return game.home_score
+  }
+
+  if (team === game.away_team) {
+    return game.away_score
+  }
+
+  return null
+}
+
+// --------------------------------------------------
+// HEAD-TO-HEAD RECORD
+//
+// Every graded pick affects BOTH players.
+//
+// My pick wins:
+//   Me = win
+//   Opponent = loss
+//
+// My pick loses:
+//   Me = loss
+//   Opponent = win
+//
+// Push:
+//   Both = push
+// --------------------------------------------------
+
+function calculateHeadToHeadRecord(
+  playerId: string,
+  allPlayers: Player[],
+  relevantPicks: Pick[],
+  relevantAdjustments: Adjustment[]
+): Record {
+  let wins = 0
+  let losses = 0
+  let pushes = 0
+
+  for (const pick of relevantPicks) {
+    if (pick.result === 'pending') {
+      continue
+    }
+
+    if (pick.result === 'push') {
+      pushes++
+      continue
+    }
+
+    const isMyPick =
+      pick.player_id === playerId
+
+    if (isMyPick) {
+      if (pick.result === 'win') {
+        wins++
+      }
+
+      if (pick.result === 'loss') {
+        losses++
+      }
+
+      continue
+    }
+
+    if (pick.result === 'win') {
+      losses++
+    }
+
+    if (pick.result === 'loss') {
+      wins++
+    }
+  }
+
+  for (const adjustment of relevantAdjustments) {
+    const isMyAdjustment =
+      adjustment.target_player_id ===
       playerId
+
+    if (isMyAdjustment) {
+      wins +=
+        Number(
+          adjustment.wins_delta
+        ) || 0
+
+      losses +=
+        Number(
+          adjustment.losses_delta
+        ) || 0
+
+      pushes +=
+        Number(
+          adjustment.pushes_delta
+        ) || 0
+
+      continue
+    }
+
+    const adjustmentPlayerExists =
+      allPlayers.some(
+        (player) =>
+          player.id ===
+          adjustment.target_player_id
+      )
+
+    if (!adjustmentPlayerExists) {
+      continue
+    }
+
+    losses +=
+      Number(
+        adjustment.wins_delta
+      ) || 0
+
+    wins +=
+      Number(
+        adjustment.losses_delta
+      ) || 0
+
+    pushes +=
+      Number(
+        adjustment.pushes_delta
+      ) || 0
+  }
+
+  return {
+    wins,
+    losses,
+    pushes,
+  }
+}
+
+// --------------------------------------------------
+// PICK CARD
+// --------------------------------------------------
+
+function PickBox({
+  player,
+  pick,
+  games,
+  loggedInPlayerId,
+}: {
+  player: Player
+  pick: Pick | undefined
+  games: Game[]
+  loggedInPlayerId: string
+}) {
+  const game =
+    pick
+      ? getGameForPick(
+          pick,
+          games
+        )
+      : undefined
+
+  let opponentTeam: string | null =
+    null
+
+  if (pick && game) {
+    if (
+      pick.team === game.home_team
+    ) {
+      opponentTeam =
+        game.away_team
+    } else if (
+      pick.team === game.away_team
+    ) {
+      opponentTeam =
+        game.home_team
+    }
+  }
+
+  const selectedSpread =
+    pick
+      ? Number(pick.spread)
+      : 0
+
+  const opponentSpread =
+    selectedSpread === 0
+      ? 0
+      : selectedSpread * -1
+
+  const pickedTeamScore =
+    pick
+      ? getScoreForTeam(
+          game,
+          pick.team
+        )
+      : null
+
+  const opponentScore =
+    getScoreForTeam(
+      game,
+      opponentTeam
+    )
+
+  const hasFinalScore =
+    game?.completed &&
+    pickedTeamScore !== null &&
+    opponentScore !== null
+
+  return (
+    <div
+      className={`min-w-0 rounded-xl border p-3 sm:p-4 ${perspectiveClasses(
+        pick,
+        loggedInPlayerId
+      )}`}
+    >
+
+      {/* TOP LINE */}
+
+      <div className="flex min-w-0 items-center gap-3">
+
+        <div className="shrink-0 text-xs font-black uppercase tracking-wide text-slate-300">
+          {player.id === loggedInPlayerId
+            ? `${player.name} · YOU`
+            : player.name}
+        </div>
+
+        {pick && (
+          <>
+            <div className="min-w-0 flex-1 truncate text-sm font-black text-white">
+              {pick.team}
+            </div>
+
+            <div className="shrink-0 text-lg font-black text-cyan-300">
+              {formatSpread(
+                selectedSpread
+              )}
+            </div>
+
+            <div className="shrink-0 text-xs font-bold text-slate-500">
+              #{pick.pick_number}
+            </div>
+          </>
+        )}
+
+      </div>
+
+      {!pick ? (
+        <div className="mt-4 text-sm text-slate-500">
+          Waiting for pick
+        </div>
+      ) : (
+        <div className="mt-3">
+
+          {/* SCORE LABEL */}
+
+          <div className="mb-1 flex justify-end pr-3 text-xs font-bold text-slate-300">
+            {hasFinalScore
+              ? 'Final Score'
+              : 'Score'}
+          </div>
+
+          {/* PICKED TEAM */}
+
+          <div className="rounded-lg bg-black/20 px-3 py-3">
+
+            <div className="grid grid-cols-[1fr_auto] items-center gap-4">
+
+              <div className="min-w-0">
+
+                <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  Pick
+                </div>
+
+                <div className="mt-1 truncate font-black text-white">
+                  {pick.team}
+                </div>
+
+                <div className="mt-1 text-sm font-black text-cyan-300">
+                  {formatSpread(
+                    selectedSpread
+                  )}
+                </div>
+
+              </div>
+
+              <div className="min-w-8 text-right text-xl font-black text-white">
+                {pickedTeamScore !== null
+                  ? pickedTeamScore
+                  : '—'}
+              </div>
+
+            </div>
+
+          </div>
+
+          {/* OPPONENT */}
+
+          <div className="mt-2 rounded-lg border border-white/10 bg-black/10 px-3 py-3">
+
+            <div className="grid grid-cols-[1fr_auto] items-center gap-4">
+
+              <div className="min-w-0">
+
+                <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  Opponent
+                </div>
+
+                <div className="mt-1 truncate font-bold text-slate-200">
+                  {opponentTeam ??
+                    'Opponent unavailable'}
+                </div>
+
+                <div className="mt-1 text-sm font-black text-slate-400">
+                  {opponentTeam
+                    ? formatSpread(
+                        opponentSpread
+                      )
+                    : '—'}
+                </div>
+
+              </div>
+
+              <div className="min-w-8 text-right text-xl font-black text-white">
+                {opponentScore !== null
+                  ? opponentScore
+                  : '—'}
+              </div>
+
+            </div>
+
+          </div>
+
+          {/* RESULT */}
+
+          <div className="mt-4 flex items-center justify-between gap-3">
+
+            <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+              Result
+            </div>
+
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-black uppercase ${resultBadgeClasses(
+                pick.result
+              )}`}
+            >
+              {pick.result}
+            </span>
+
+          </div>
+
+        </div>
+      )}
+
+    </div>
   )
 }
 
 export default async function HistoryPage() {
   // --------------------------------------------------
-  // REQUIRE LOGIN
+  // LOGIN
   // --------------------------------------------------
 
   const authSupabase =
@@ -128,10 +506,6 @@ export default async function HistoryPage() {
 
   const supabase =
     createAdminClient()
-
-  // --------------------------------------------------
-  // VERIFY LOGIN
-  // --------------------------------------------------
 
   const {
     data: loggedInPlayer,
@@ -155,7 +529,7 @@ export default async function HistoryPage() {
     return (
       <main className="min-h-screen bg-slate-950 p-6 text-white">
 
-        <div className="mx-auto max-w-5xl">
+        <div className="mx-auto max-w-6xl">
 
           <h1 className="text-4xl font-black">
             Season History
@@ -214,7 +588,7 @@ export default async function HistoryPage() {
     return (
       <main className="min-h-screen bg-slate-950 p-6 text-white">
 
-        <div className="mx-auto max-w-5xl">
+        <div className="mx-auto max-w-6xl">
 
           <h1 className="text-4xl font-black">
             Season History
@@ -265,6 +639,20 @@ export default async function HistoryPage() {
   const players =
     (playersData ?? []) as Player[]
 
+  const opponent =
+    players.find(
+      (player) =>
+        player.id !==
+        loggedInPlayer.id
+    )
+
+  const displayPlayers: Player[] = [
+    loggedInPlayer,
+    ...(opponent
+      ? [opponent]
+      : []),
+  ]
+
   const geoff =
     players.find(
       (player) =>
@@ -282,7 +670,7 @@ export default async function HistoryPage() {
     )
 
   // --------------------------------------------------
-  // ALL WEEKS
+  // WEEKS
   // --------------------------------------------------
 
   const {
@@ -340,6 +728,7 @@ export default async function HistoryPage() {
         id,
         week_id,
         player_id,
+        game_id,
         pick_number,
         team,
         spread,
@@ -368,6 +757,51 @@ export default async function HistoryPage() {
   }
 
   // --------------------------------------------------
+  // GAMES USED BY PICKS
+  // --------------------------------------------------
+
+  let games: Game[] = []
+
+  const gameIds =
+    Array.from(
+      new Set(
+        picks.map(
+          (pick) =>
+            pick.game_id
+        )
+      )
+    )
+
+  if (gameIds.length > 0) {
+    const {
+      data: gamesData,
+      error: gamesError,
+    } = await supabase
+      .from('games')
+      .select(`
+        id,
+        home_team,
+        away_team,
+        completed,
+        home_score,
+        away_score
+      `)
+      .in(
+        'id',
+        gameIds
+      )
+
+    if (gamesError) {
+      throw new Error(
+        gamesError.message
+      )
+    }
+
+    games =
+      (gamesData ?? []) as Game[]
+  }
+
+  // --------------------------------------------------
   // APPROVED ADJUSTMENTS
   // --------------------------------------------------
 
@@ -377,8 +811,7 @@ export default async function HistoryPage() {
   if (weekIds.length > 0) {
     const {
       data: adjustmentsData,
-      error:
-        adjustmentsError,
+      error: adjustmentsError,
     } = await supabase
       .from(
         'result_adjustments'
@@ -411,80 +844,33 @@ export default async function HistoryPage() {
   }
 
   // --------------------------------------------------
-  // SEASON RECORDS
+  // HEAD-TO-HEAD SEASON STANDINGS
   // --------------------------------------------------
 
   const standings =
     players.map(
       (player) => {
-        const playerPicks =
-          picks.filter(
-            (pick) =>
-              pick.player_id ===
-              player.id
+        const record =
+          calculateHeadToHeadRecord(
+            player.id,
+            players,
+            picks,
+            adjustments
           )
-
-        let wins =
-          playerPicks.filter(
-            (pick) =>
-              pick.result ===
-              'win'
-          ).length
-
-        let losses =
-          playerPicks.filter(
-            (pick) =>
-              pick.result ===
-              'loss'
-          ).length
-
-        let pushes =
-          playerPicks.filter(
-            (pick) =>
-              pick.result ===
-              'push'
-          ).length
-
-        const playerAdjustments =
-          adjustments.filter(
-            (adjustment) =>
-              adjustment.target_player_id ===
-              player.id
-          )
-
-        for (
-          const adjustment of
-          playerAdjustments
-        ) {
-          wins +=
-            Number(
-              adjustment.wins_delta
-            ) || 0
-
-          losses +=
-            Number(
-              adjustment.losses_delta
-            ) || 0
-
-          pushes +=
-            Number(
-              adjustment.pushes_delta
-            ) || 0
-        }
 
         const decisions =
-          wins + losses
+          record.wins +
+          record.losses
 
         const percentage =
           decisions > 0
-            ? wins / decisions
+            ? record.wins /
+              decisions
             : 0
 
         return {
           player,
-          wins,
-          losses,
-          pushes,
+          ...record,
           percentage,
         }
       }
@@ -509,6 +895,10 @@ export default async function HistoryPage() {
 
   const generalSeasonWins =
     generalStanding?.wins ?? 0
+
+  // --------------------------------------------------
+  // LIVE OVERALL TALLY
+  // --------------------------------------------------
 
   const runningGeneralLead =
     STARTING_GENERAL_LEAD +
@@ -549,9 +939,7 @@ export default async function HistoryPage() {
               </div>
 
               <div className="font-black text-emerald-400">
-                {
-                  loggedInPlayer.name
-                }
+                {loggedInPlayer.name}
               </div>
 
             </div>
@@ -560,7 +948,7 @@ export default async function HistoryPage() {
 
         </header>
 
-        {/* SEASON RECORDS + OVERALL */}
+        {/* SEASON STANDINGS */}
 
         <section className="mb-8">
 
@@ -571,8 +959,8 @@ export default async function HistoryPage() {
           <div className="grid gap-4 md:grid-cols-3">
 
             {[
-              geoffStanding,
               generalStanding,
+              geoffStanding,
             ]
               .filter(Boolean)
               .map(
@@ -591,21 +979,15 @@ export default async function HistoryPage() {
                     </div>
 
                     <div className="mt-1 text-sm text-slate-400">
-                      Season Record
+                      Head-to-Head Season Record
                     </div>
 
                     <div className="mt-5 text-4xl font-black">
-                      {
-                        standing!.wins
-                      }
+                      {standing!.wins}
                       -
-                      {
-                        standing!.losses
-                      }
+                      {standing!.losses}
                       -
-                      {
-                        standing!.pushes
-                      }
+                      {standing!.pushes}
                     </div>
 
                     <div className="mt-2 text-sm text-slate-400">
@@ -629,7 +1011,7 @@ export default async function HistoryPage() {
               </div>
 
               <div className="mt-1 text-sm text-amber-200/70">
-                All-time rivalry
+                Live rivalry lead
               </div>
 
               <div className="mt-5 text-4xl font-black text-amber-300">
@@ -638,9 +1020,7 @@ export default async function HistoryPage() {
                 0 ? (
                   <>
                     General +
-                    {
-                      runningGeneralLead
-                    }
+                    {runningGeneralLead}
                   </>
                 ) : runningGeneralLead <
                   0 ? (
@@ -657,14 +1037,11 @@ export default async function HistoryPage() {
               </div>
 
               <div className="mt-2 text-sm text-amber-100/70">
-                {runningGeneralLead ===
-                0
-                  ? 'Overall games are tied.'
-                  : 'Overall games ahead'}
+                Updates as games are graded
               </div>
 
-              <div className="mt-3 text-xs text-amber-200/60">
-                Started this season with General +20.
+              <div className="mt-4 border-t border-amber-800/50 pt-4 text-xs text-amber-200/60">
+                Started this season with General +20
               </div>
 
             </div>
@@ -677,7 +1054,7 @@ export default async function HistoryPage() {
 
         <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-4">
 
-          <div className="flex flex-wrap items-center gap-4 text-sm">
+          <div className="flex flex-wrap items-center gap-5 text-sm">
 
             <div className="font-black text-slate-300">
               From your perspective:
@@ -760,63 +1137,17 @@ export default async function HistoryPage() {
                     const weekRecords =
                       players.map(
                         (player) => {
-                          const playerPicks =
-                            weekPicks.filter(
-                              (pick) =>
-                                pick.player_id ===
-                                player.id
+                          const record =
+                            calculateHeadToHeadRecord(
+                              player.id,
+                              players,
+                              weekPicks,
+                              weekAdjustments
                             )
-
-                          let wins =
-                            playerPicks.filter(
-                              (pick) =>
-                                pick.result ===
-                                'win'
-                            ).length
-
-                          let losses =
-                            playerPicks.filter(
-                              (pick) =>
-                                pick.result ===
-                                'loss'
-                            ).length
-
-                          let pushes =
-                            playerPicks.filter(
-                              (pick) =>
-                                pick.result ===
-                                'push'
-                            ).length
-
-                          for (
-                            const adjustment of
-                            weekAdjustments.filter(
-                              (item) =>
-                                item.target_player_id ===
-                                player.id
-                            )
-                          ) {
-                            wins +=
-                              Number(
-                                adjustment.wins_delta
-                              ) || 0
-
-                            losses +=
-                              Number(
-                                adjustment.losses_delta
-                              ) || 0
-
-                            pushes +=
-                              Number(
-                                adjustment.pushes_delta
-                              ) || 0
-                          }
 
                           return {
                             player,
-                            wins,
-                            losses,
-                            pushes,
+                            ...record,
                           }
                         }
                       )
@@ -862,19 +1193,9 @@ export default async function HistoryPage() {
                       )
                     }
 
-                    const orderedPlayers =
-                      [
-                        geoff,
-                        general,
-                      ].filter(
-                        Boolean
-                      ) as Player[]
-
                     return (
                       <article
-                        key={
-                          week.id
-                        }
+                        key={week.id}
                         className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900"
                       >
 
@@ -890,9 +1211,7 @@ export default async function HistoryPage() {
 
                                 <h3 className="text-2xl font-black">
                                   Week{' '}
-                                  {
-                                    week.week_number
-                                  }
+                                  {week.week_number}
                                 </h3>
 
                                 <span
@@ -903,9 +1222,7 @@ export default async function HistoryPage() {
                                       : 'bg-cyan-950 text-cyan-400'
                                   }`}
                                 >
-                                  {
-                                    week.status
-                                  }
+                                  {week.status}
                                 </span>
 
                               </div>
@@ -923,9 +1240,7 @@ export default async function HistoryPage() {
                             <div className="flex flex-wrap gap-3">
 
                               {weekRecords.map(
-                                (
-                                  record
-                                ) => (
+                                (record) => (
                                   <div
                                     key={
                                       record.player.id
@@ -935,22 +1250,17 @@ export default async function HistoryPage() {
 
                                     <div className="text-xs text-slate-400">
                                       {
-                                        record.player.name
+                                        record.player
+                                          .name
                                       }
                                     </div>
 
                                     <div className="mt-1 font-black">
-                                      {
-                                        record.wins
-                                      }
+                                      {record.wins}
                                       -
-                                      {
-                                        record.losses
-                                      }
+                                      {record.losses}
                                       -
-                                      {
-                                        record.pushes
-                                      }
+                                      {record.pushes}
                                     </div>
 
                                   </div>
@@ -971,6 +1281,21 @@ export default async function HistoryPage() {
                         ) : (
                           <div className="space-y-5 p-4 sm:p-6">
 
+                            {/* COLUMN LABELS */}
+
+                            <div className="grid grid-cols-2 gap-2">
+
+                              <div className="rounded-lg bg-slate-800/70 px-3 py-2 text-xs font-black uppercase tracking-wide text-emerald-400">
+                                {loggedInPlayer.name}
+                              </div>
+
+                              <div className="rounded-lg bg-slate-800/70 px-3 py-2 text-right text-xs font-black uppercase tracking-wide text-slate-400">
+                                {opponent?.name ??
+                                  'Opponent'}
+                              </div>
+
+                            </div>
+
                             {/* AUTOMATIC PICKS */}
 
                             {automaticPicks.length >
@@ -981,89 +1306,29 @@ export default async function HistoryPage() {
                                   Automatic Picks
                                 </div>
 
-                                <div className="grid gap-2 sm:grid-cols-2">
+                                <div className="grid grid-cols-2 gap-2">
 
-                                  {orderedPlayers.map(
-                                    (
-                                      player
-                                    ) => {
-                                      const pick =
-                                        getPickForPlayer(
+                                  {displayPlayers.map(
+                                    (player) => (
+                                      <PickBox
+                                        key={
+                                          player.id
+                                        }
+                                        player={
+                                          player
+                                        }
+                                        pick={getPickForPlayer(
                                           automaticPicks,
                                           player.id
-                                        )
-
-                                      return (
-                                        <div
-                                          key={
-                                            player.id
-                                          }
-                                          className={`min-w-0 rounded-xl border p-4 ${perspectiveClasses(
-                                            pick,
-                                            loggedInPlayer.id
-                                          )}`}
-                                        >
-
-                                          <div className="flex items-center justify-between gap-2">
-
-                                            <div className="text-xs font-black uppercase tracking-wide text-slate-400">
-                                              {
-                                                player.name
-                                              }
-                                            </div>
-
-                                            {pick && (
-                                              <span className="text-xs font-bold text-slate-500">
-                                                #
-                                                {
-                                                  pick.pick_number
-                                                }
-                                              </span>
-                                            )}
-
-                                          </div>
-
-                                          {pick ? (
-                                            <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-
-                                              <div className="min-w-0">
-
-                                                <div className="truncate text-lg font-black">
-                                                  {
-                                                    pick.team
-                                                  }
-                                                </div>
-
-                                                <div className="mt-1 text-xl font-black text-cyan-300">
-                                                  {formatSpread(
-                                                    Number(
-                                                      pick.spread
-                                                    )
-                                                  )}
-                                                </div>
-
-                                              </div>
-
-                                              <span
-                                                className={`rounded-full px-3 py-1 text-xs font-black uppercase ${resultBadgeClasses(
-                                                  pick.result
-                                                )}`}
-                                              >
-                                                {
-                                                  pick.result
-                                                }
-                                              </span>
-
-                                            </div>
-                                          ) : (
-                                            <div className="mt-3 text-sm text-slate-500">
-                                              Waiting for pick
-                                            </div>
-                                          )}
-
-                                        </div>
-                                      )
-                                    }
+                                        )}
+                                        games={
+                                          games
+                                        }
+                                        loggedInPlayerId={
+                                          loggedInPlayer.id
+                                        }
+                                      />
+                                    )
                                   )}
 
                                 </div>
@@ -1071,7 +1336,7 @@ export default async function HistoryPage() {
                               </div>
                             )}
 
-                            {/* NORMAL DRAFT ROUNDS */}
+                            {/* NORMAL ROUNDS */}
 
                             {normalRounds.map(
                               (
@@ -1079,102 +1344,39 @@ export default async function HistoryPage() {
                                 index
                               ) => (
                                 <div
-                                  key={
-                                    `round-${index}`
-                                  }
+                                  key={`round-${index}`}
                                 >
 
                                   <div className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">
                                     Draft Round{' '}
-                                    {
-                                      index +
-                                      1
-                                    }
+                                    {index + 1}
                                   </div>
 
-                                  <div className="grid gap-2 sm:grid-cols-2">
+                                  <div className="grid grid-cols-2 gap-2">
 
-                                    {orderedPlayers.map(
+                                    {displayPlayers.map(
                                       (
                                         player
-                                      ) => {
-                                        const pick =
-                                          getPickForPlayer(
+                                      ) => (
+                                        <PickBox
+                                          key={
+                                            player.id
+                                          }
+                                          player={
+                                            player
+                                          }
+                                          pick={getPickForPlayer(
                                             round,
                                             player.id
-                                          )
-
-                                        return (
-                                          <div
-                                            key={
-                                              player.id
-                                            }
-                                            className={`min-w-0 rounded-xl border p-4 ${perspectiveClasses(
-                                              pick,
-                                              loggedInPlayer.id
-                                            )}`}
-                                          >
-
-                                            <div className="flex items-center justify-between gap-2">
-
-                                              <div className="text-xs font-black uppercase tracking-wide text-slate-400">
-                                                {
-                                                  player.name
-                                                }
-                                              </div>
-
-                                              {pick && (
-                                                <span className="text-xs font-bold text-slate-500">
-                                                  #
-                                                  {
-                                                    pick.pick_number
-                                                  }
-                                                </span>
-                                              )}
-
-                                            </div>
-
-                                            {pick ? (
-                                              <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-
-                                                <div className="min-w-0">
-
-                                                  <div className="truncate text-lg font-black">
-                                                    {
-                                                      pick.team
-                                                    }
-                                                  </div>
-
-                                                  <div className="mt-1 text-xl font-black text-cyan-300">
-                                                    {formatSpread(
-                                                      Number(
-                                                        pick.spread
-                                                      )
-                                                    )}
-                                                  </div>
-
-                                                </div>
-
-                                                <span
-                                                  className={`rounded-full px-3 py-1 text-xs font-black uppercase ${resultBadgeClasses(
-                                                    pick.result
-                                                  )}`}
-                                                >
-                                                  {
-                                                    pick.result
-                                                  }
-                                                </span>
-
-                                              </div>
-                                            ) : (
-                                              <div className="mt-3 text-sm text-slate-500">
-                                                Waiting for pick
-                                              </div>
-                                            )}
-
-                                          </div>
-                                        )
-                                      }
+                                          )}
+                                          games={
+                                            games
+                                          }
+                                          loggedInPlayerId={
+                                            loggedInPlayer.id
+                                          }
+                                        />
+                                      )
                                     )}
 
                                   </div>
