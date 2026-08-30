@@ -150,23 +150,6 @@ function getScoreForTeam(
   return null
 }
 
-// --------------------------------------------------
-// HEAD-TO-HEAD RECORD
-//
-// Every graded pick affects BOTH players.
-//
-// My pick wins:
-//   Me = win
-//   Opponent = loss
-//
-// My pick loses:
-//   Me = loss
-//   Opponent = win
-//
-// Push:
-//   Both = push
-// --------------------------------------------------
-
 function calculateHeadToHeadRecord(
   playerId: string,
   allPlayers: Player[],
@@ -269,10 +252,6 @@ function calculateHeadToHeadRecord(
   }
 }
 
-// --------------------------------------------------
-// PICK CARD
-// --------------------------------------------------
-
 function PickBox({
   player,
   pick,
@@ -346,8 +325,6 @@ function PickBox({
       )}`}
     >
 
-      {/* TOP LINE */}
-
       <div className="flex min-w-0 items-center gap-3">
 
         <div className="shrink-0 text-xs font-black uppercase tracking-wide text-slate-300">
@@ -383,86 +360,86 @@ function PickBox({
       ) : (
         <div className="mt-3">
 
-          {/* SCORE LABEL */}
-
-          <div className="mb-1 flex justify-end pr-3 text-xs font-bold text-slate-300">
+          <div className="mb-2 flex justify-end pr-1 text-xs font-bold text-slate-300">
             {hasFinalScore
               ? 'Final Score'
               : 'Score'}
           </div>
 
-          {/* PICKED TEAM */}
+          <div className="grid gap-3 md:grid-cols-2">
 
-          <div className="rounded-lg bg-black/20 px-3 py-3">
+            {/* PICKED TEAM - LEFT */}
 
-            <div className="grid grid-cols-[1fr_auto] items-center gap-4">
+            <div className="rounded-lg bg-black/20 px-3 py-3">
 
-              <div className="min-w-0">
+              <div className="grid grid-cols-[1fr_auto] items-center gap-4">
 
-                <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                  Pick
+                <div className="min-w-0">
+
+                  <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                    Pick
+                  </div>
+
+                  <div className="mt-1 truncate font-black text-white">
+                    {pick.team}
+                  </div>
+
+                  <div className="mt-1 text-sm font-black text-cyan-300">
+                    {formatSpread(
+                      selectedSpread
+                    )}
+                  </div>
+
                 </div>
 
-                <div className="mt-1 truncate font-black text-white">
-                  {pick.team}
-                </div>
-
-                <div className="mt-1 text-sm font-black text-cyan-300">
-                  {formatSpread(
-                    selectedSpread
-                  )}
-                </div>
-
-              </div>
-
-              <div className="min-w-8 text-right text-xl font-black text-white">
-                {pickedTeamScore !== null
-                  ? pickedTeamScore
-                  : '—'}
-              </div>
-
-            </div>
-
-          </div>
-
-          {/* OPPONENT */}
-
-          <div className="mt-2 rounded-lg border border-white/10 bg-black/10 px-3 py-3">
-
-            <div className="grid grid-cols-[1fr_auto] items-center gap-4">
-
-              <div className="min-w-0">
-
-                <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                  Opponent
-                </div>
-
-                <div className="mt-1 truncate font-bold text-slate-200">
-                  {opponentTeam ??
-                    'Opponent unavailable'}
-                </div>
-
-                <div className="mt-1 text-sm font-black text-slate-400">
-                  {opponentTeam
-                    ? formatSpread(
-                        opponentSpread
-                      )
+                <div className="min-w-8 text-right text-xl font-black text-white">
+                  {pickedTeamScore !== null
+                    ? pickedTeamScore
                     : '—'}
                 </div>
 
               </div>
 
-              <div className="min-w-8 text-right text-xl font-black text-white">
-                {opponentScore !== null
-                  ? opponentScore
-                  : '—'}
+            </div>
+
+            {/* OPPONENT - RIGHT */}
+
+            <div className="rounded-lg border border-white/10 bg-black/10 px-3 py-3">
+
+              <div className="grid grid-cols-[1fr_auto] items-center gap-4">
+
+                <div className="min-w-0">
+
+                  <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                    Opponent
+                  </div>
+
+                  <div className="mt-1 truncate font-bold text-slate-200">
+                    {opponentTeam ??
+                      'Opponent unavailable'}
+                  </div>
+
+                  <div className="mt-1 text-sm font-black text-slate-400">
+                    {opponentTeam
+                      ? formatSpread(
+                          opponentSpread
+                        )
+                      : '—'}
+                  </div>
+
+                </div>
+
+                <div className="min-w-8 text-right text-xl font-black text-white">
+                  {opponentScore !== null
+                    ? opponentScore
+                    : '—'}
+                </div>
+
               </div>
 
             </div>
 
           </div>
-
-          {/* RESULT */}
 
           <div className="mt-4 flex items-center justify-between gap-3">
 
@@ -488,10 +465,6 @@ function PickBox({
 }
 
 export default async function HistoryPage() {
-  // --------------------------------------------------
-  // LOGIN
-  // --------------------------------------------------
-
   const authSupabase =
     await createClient()
 
@@ -556,10 +529,6 @@ export default async function HistoryPage() {
     )
   }
 
-  // --------------------------------------------------
-  // CURRENT SEASON
-  // --------------------------------------------------
-
   const {
     data: season,
     error: seasonError,
@@ -615,10 +584,6 @@ export default async function HistoryPage() {
     )
   }
 
-  // --------------------------------------------------
-  // PLAYERS
-  // --------------------------------------------------
-
   const {
     data: playersData,
     error: playersError,
@@ -669,10 +634,6 @@ export default async function HistoryPage() {
         'general'
     )
 
-  // --------------------------------------------------
-  // WEEKS
-  // --------------------------------------------------
-
   const {
     data: weeksData,
     error: weeksError,
@@ -711,10 +672,6 @@ export default async function HistoryPage() {
       (week) =>
         week.id
     )
-
-  // --------------------------------------------------
-  // PICKS
-  // --------------------------------------------------
 
   let picks: Pick[] = []
 
@@ -755,10 +712,6 @@ export default async function HistoryPage() {
     picks =
       (picksData ?? []) as Pick[]
   }
-
-  // --------------------------------------------------
-  // GAMES USED BY PICKS
-  // --------------------------------------------------
 
   let games: Game[] = []
 
@@ -801,10 +754,6 @@ export default async function HistoryPage() {
       (gamesData ?? []) as Game[]
   }
 
-  // --------------------------------------------------
-  // APPROVED ADJUSTMENTS
-  // --------------------------------------------------
-
   let adjustments: Adjustment[] =
     []
 
@@ -842,10 +791,6 @@ export default async function HistoryPage() {
       (adjustmentsData ??
         []) as Adjustment[]
   }
-
-  // --------------------------------------------------
-  // HEAD-TO-HEAD SEASON STANDINGS
-  // --------------------------------------------------
 
   const standings =
     players.map(
@@ -896,25 +841,15 @@ export default async function HistoryPage() {
   const generalSeasonWins =
     generalStanding?.wins ?? 0
 
-  // --------------------------------------------------
-  // LIVE OVERALL TALLY
-  // --------------------------------------------------
-
   const runningGeneralLead =
     STARTING_GENERAL_LEAD +
     generalSeasonWins -
     geoffSeasonWins
 
-  // --------------------------------------------------
-  // PAGE
-  // --------------------------------------------------
-
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6">
 
       <div className="mx-auto max-w-6xl">
-
-        {/* HEADER */}
 
         <header className="mb-8">
 
@@ -947,8 +882,6 @@ export default async function HistoryPage() {
           </div>
 
         </header>
-
-        {/* SEASON STANDINGS */}
 
         <section className="mb-8">
 
@@ -1002,8 +935,6 @@ export default async function HistoryPage() {
                 )
               )}
 
-            {/* OVERALL TALLY */}
-
             <div className="rounded-2xl border border-amber-700/60 bg-amber-950/30 p-6">
 
               <div className="text-2xl font-black">
@@ -1050,8 +981,6 @@ export default async function HistoryPage() {
 
         </section>
 
-        {/* COLOR KEY */}
-
         <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-4">
 
           <div className="flex flex-wrap items-center gap-5 text-sm">
@@ -1093,8 +1022,6 @@ export default async function HistoryPage() {
           </div>
 
         </section>
-
-        {/* WEEK HISTORY */}
 
         <section>
 
@@ -1199,8 +1126,6 @@ export default async function HistoryPage() {
                         className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900"
                       >
 
-                        {/* WEEK HEADER */}
-
                         <div className="border-b border-slate-800 p-5 sm:p-6">
 
                           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1281,8 +1206,6 @@ export default async function HistoryPage() {
                         ) : (
                           <div className="space-y-5 p-4 sm:p-6">
 
-                            {/* COLUMN LABELS */}
-
                             <div className="grid grid-cols-2 gap-2">
 
                               <div className="rounded-lg bg-slate-800/70 px-3 py-2 text-xs font-black uppercase tracking-wide text-emerald-400">
@@ -1295,8 +1218,6 @@ export default async function HistoryPage() {
                               </div>
 
                             </div>
-
-                            {/* AUTOMATIC PICKS */}
 
                             {automaticPicks.length >
                               0 && (
@@ -1335,8 +1256,6 @@ export default async function HistoryPage() {
 
                               </div>
                             )}
-
-                            {/* NORMAL ROUNDS */}
 
                             {normalRounds.map(
                               (
@@ -1397,8 +1316,6 @@ export default async function HistoryPage() {
           )}
 
         </section>
-
-        {/* BACK */}
 
         <div className="mt-8 pb-8">
 
