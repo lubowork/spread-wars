@@ -61,9 +61,7 @@ type Standing = {
 
 const STARTING_GENERAL_LEAD = 20
 
-function formatSpread(
-  spread: number
-) {
+function formatSpread(spread: number) {
   if (spread > 0) {
     return `+${spread}`
   }
@@ -75,9 +73,7 @@ function formatSpread(
   return `${spread}`
 }
 
-function resultBadgeClasses(
-  result: string
-) {
+function resultBadgeClasses(result: string) {
   if (result === 'win') {
     return 'border border-emerald-700 bg-emerald-950 text-emerald-300'
   }
@@ -94,11 +90,10 @@ function resultBadgeClasses(
 }
 
 function perspectiveCardClasses(
-  pick: Pick | undefined,
+  pick: Pick,
   loggedInPlayerId: string
 ) {
   if (
-    !pick ||
     pick.result === 'pending' ||
     pick.result === 'push'
   ) {
@@ -106,11 +101,14 @@ function perspectiveCardClasses(
   }
 
   const isMyPick =
-    pick.player_id === loggedInPlayerId
+    pick.player_id ===
+    loggedInPlayerId
 
   const goodForMe =
-    (isMyPick && pick.result === 'win') ||
-    (!isMyPick && pick.result === 'loss')
+    (isMyPick &&
+      pick.result === 'win') ||
+    (!isMyPick &&
+      pick.result === 'loss')
 
   if (goodForMe) {
     return 'border-emerald-600 bg-emerald-950/35'
@@ -125,7 +123,8 @@ function getGameForPick(
 ) {
   return games.find(
     (game) =>
-      game.id === pick.game_id
+      game.id ===
+      pick.game_id
   )
 }
 
@@ -137,11 +136,17 @@ function getOpponentTeam(
     return null
   }
 
-  if (pick.team === game.home_team) {
+  if (
+    pick.team ===
+    game.home_team
+  ) {
     return game.away_team
   }
 
-  if (pick.team === game.away_team) {
+  if (
+    pick.team ===
+    game.away_team
+  ) {
     return game.home_team
   }
 
@@ -160,11 +165,17 @@ function getScoreForTeam(
     return null
   }
 
-  if (team === game.home_team) {
+  if (
+    team ===
+    game.home_team
+  ) {
     return game.home_score
   }
 
-  if (team === game.away_team) {
+  if (
+    team ===
+    game.away_team
+  ) {
     return game.away_score
   }
 
@@ -181,44 +192,82 @@ function calculateHeadToHeadRecord(
   let losses = 0
   let pushes = 0
 
-  for (const pick of relevantPicks) {
-    if (pick.result === 'pending') {
+  for (
+    const pick of
+    relevantPicks
+  ) {
+    if (
+      pick.result ===
+      'pending'
+    ) {
       continue
     }
 
-    if (pick.result === 'push') {
+    if (
+      pick.result ===
+      'push'
+    ) {
       pushes++
       continue
     }
 
     const isMyPick =
-      pick.player_id === playerId
+      pick.player_id ===
+      playerId
 
     if (isMyPick) {
-      if (pick.result === 'win') {
+      if (
+        pick.result ===
+        'win'
+      ) {
         wins++
-      } else if (pick.result === 'loss') {
+      } else if (
+        pick.result ===
+        'loss'
+      ) {
         losses++
       }
 
       continue
     }
 
-    if (pick.result === 'win') {
+    if (
+      pick.result ===
+      'win'
+    ) {
       losses++
-    } else if (pick.result === 'loss') {
+    } else if (
+      pick.result ===
+      'loss'
+    ) {
       wins++
     }
   }
 
-  for (const adjustment of relevantAdjustments) {
+  for (
+    const adjustment of
+    relevantAdjustments
+  ) {
     const isMyAdjustment =
-      adjustment.target_player_id === playerId
+      adjustment.target_player_id ===
+      playerId
 
     if (isMyAdjustment) {
-      wins += Number(adjustment.wins_delta) || 0
-      losses += Number(adjustment.losses_delta) || 0
-      pushes += Number(adjustment.pushes_delta) || 0
+      wins +=
+        Number(
+          adjustment.wins_delta
+        ) || 0
+
+      losses +=
+        Number(
+          adjustment.losses_delta
+        ) || 0
+
+      pushes +=
+        Number(
+          adjustment.pushes_delta
+        ) || 0
+
       continue
     }
 
@@ -229,13 +278,26 @@ function calculateHeadToHeadRecord(
           adjustment.target_player_id
       )
 
-    if (!adjustmentPlayerExists) {
+    if (
+      !adjustmentPlayerExists
+    ) {
       continue
     }
 
-    losses += Number(adjustment.wins_delta) || 0
-    wins += Number(adjustment.losses_delta) || 0
-    pushes += Number(adjustment.pushes_delta) || 0
+    losses +=
+      Number(
+        adjustment.wins_delta
+      ) || 0
+
+    wins +=
+      Number(
+        adjustment.losses_delta
+      ) || 0
+
+    pushes +=
+      Number(
+        adjustment.pushes_delta
+      ) || 0
   }
 
   return {
@@ -245,18 +307,18 @@ function calculateHeadToHeadRecord(
   }
 }
 
-function PickMatchupRow({
+function PickCard({
   player,
   pick,
   games,
   loggedInPlayerId,
-  label,
+  displayNumber,
 }: {
   player: Player
   pick: Pick
   games: Game[]
   loggedInPlayerId: string
-  label: string
+  displayNumber: number
 }) {
   const game =
     getGameForPick(
@@ -270,15 +332,7 @@ function PickMatchupRow({
       game
     )
 
-  const selectedSpread =
-    Number(pick.spread)
-
-  const opponentSpread =
-    selectedSpread === 0
-      ? 0
-      : selectedSpread * -1
-
-  const pickedTeamScore =
+  const pickedScore =
     getScoreForTeam(
       game,
       pick.team
@@ -290,110 +344,111 @@ function PickMatchupRow({
       opponentTeam
     )
 
-  const isYou =
-    player.id === loggedInPlayerId
+  const selectedSpread =
+    Number(
+      pick.spread
+    )
+
+  const isFinal =
+    Boolean(
+      game?.completed &&
+      pickedScore !== null &&
+      opponentScore !== null
+    )
 
   return (
-    <div>
-      <div className="mb-2 text-xs font-black uppercase tracking-wide text-slate-400">
-        {label}
+    <div
+      className={`rounded-2xl border p-4 sm:p-5 ${perspectiveCardClasses(
+        pick,
+        loggedInPlayerId
+      )}`}
+    >
+
+      {/* PICK HEADER */}
+
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+
+        <div className="text-sm font-black uppercase text-slate-200">
+          Pick {displayNumber}
+          {' - '}
+          {player.name}
+        </div>
+
+        <div className="min-w-0 flex-1 text-base font-black uppercase text-white sm:text-lg">
+          {pick.team}
+        </div>
+
+        <div className="shrink-0 text-xl font-black text-cyan-300">
+          {formatSpread(
+            selectedSpread
+          )}
+        </div>
+
       </div>
 
-      <div
-        className={`rounded-2xl border p-4 sm:p-5 ${perspectiveCardClasses(
-          pick,
-          loggedInPlayerId
-        )}`}
-      >
-        {/* TOP BAR */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <div className="text-xs font-black uppercase tracking-wide text-slate-200">
-            {isYou
-              ? `${player.name} · You`
-              : player.name}
-          </div>
+      {/* RESULT */}
 
-          <div className="min-w-0 flex-1 text-lg font-black text-white sm:text-xl">
-            {pick.team}
-          </div>
+      <div className="mt-2">
 
-          <div className="text-2xl font-black text-cyan-300">
-            {formatSpread(selectedSpread)}
-          </div>
+        <span
+          className={`inline-flex rounded-full px-3 py-1 text-xs font-black uppercase ${resultBadgeClasses(
+            pick.result
+          )}`}
+        >
+          {pick.result}
+        </span>
 
-          <div className="text-xs font-bold uppercase tracking-wide text-slate-400">
-            Result
-          </div>
-
-          <span
-            className={`rounded-full px-3 py-1 text-xs font-black uppercase ${resultBadgeClasses(
-              pick.result
-            )}`}
-          >
-            {pick.result}
-          </span>
-        </div>
-
-        {/* SCORE HEADER */}
-        <div className="mt-4 text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-          Final Score
-        </div>
-
-        {/* SCORE BOXES */}
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          {/* PICK SIDE */}
-          <div className="rounded-xl bg-black/20 px-3 py-4 sm:px-4">
-            <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
-              Pick
-            </div>
-
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="break-words text-base font-black text-white sm:text-lg">
-                  {pick.team}
-                </div>
-
-                <div className="mt-1 text-lg font-black text-cyan-300 sm:text-xl">
-                  {formatSpread(selectedSpread)}
-                </div>
-              </div>
-
-              <div className="shrink-0 text-4xl font-black text-white sm:text-5xl">
-                {pickedTeamScore !== null
-                  ? pickedTeamScore
-                  : '—'}
-              </div>
-            </div>
-          </div>
-
-          {/* OPPONENT SIDE */}
-          <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-4 sm:px-4">
-            <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
-              Opponent
-            </div>
-
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="break-words text-base font-black text-slate-100 sm:text-lg">
-                  {opponentTeam ?? 'Opponent unavailable'}
-                </div>
-
-                <div className="mt-1 text-lg font-black text-slate-400 sm:text-xl">
-                  {opponentTeam
-                    ? formatSpread(opponentSpread)
-                    : '—'}
-                </div>
-              </div>
-
-              <div className="shrink-0 text-4xl font-black text-white sm:text-5xl">
-                {opponentScore !== null
-                  ? opponentScore
-                  : '—'}
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
+
+      {/* FINAL SCORE */}
+
+      <div className="mt-5">
+
+        <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+          {isFinal
+            ? 'Final Score'
+            : 'Matchup'}
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-6">
+
+          {/* PICKED TEAM */}
+
+          <div className="min-w-0">
+
+            <div className="break-words text-base font-black text-white sm:text-lg">
+              {pick.team}
+            </div>
+
+            <div className="mt-2 text-5xl font-black leading-none text-white sm:text-4xl">
+              {pickedScore !== null
+                ? pickedScore
+                : '—'}
+            </div>
+
+          </div>
+
+          {/* OPPONENT */}
+
+          <div className="min-w-0">
+
+            <div className="break-words text-base font-black text-slate-100 sm:text-lg">
+              {opponentTeam ??
+                'Opponent unavailable'}
+            </div>
+
+            <div className="mt-2 text-5xl font-black leading-none text-white sm:text-4xl">
+              {opponentScore !== null
+                ? opponentScore
+                : '—'}
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
     </div>
   )
 }
@@ -415,8 +470,10 @@ export default async function HistoryPage() {
     createAdminClient()
 
   const {
-    data: loggedInPlayerData,
-    error: loggedInPlayerError,
+    data:
+      loggedInPlayerData,
+    error:
+      loggedInPlayerError,
   } = await supabase
     .from('players')
     .select(`
@@ -435,7 +492,9 @@ export default async function HistoryPage() {
   ) {
     return (
       <main className="min-h-screen bg-slate-950 p-6 text-white">
+
         <div className="mx-auto max-w-6xl">
+
           <h1 className="text-4xl font-black">
             Season History
           </h1>
@@ -445,22 +504,34 @@ export default async function HistoryPage() {
           </div>
 
           <div className="mt-8 pb-8">
+
             <a
               href="/"
               className="flex min-h-14 w-full items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 px-5 py-4 text-center text-base font-black text-white transition hover:bg-slate-800"
             >
               ← Back to Spread Wars
             </a>
+
           </div>
+
         </div>
+
       </main>
     )
   }
 
-  const loggedInPlayer: Player = {
-    id: loggedInPlayerData.id,
-    name: loggedInPlayerData.name,
-  }
+  const loggedInPlayer:
+    Player = {
+      id:
+        loggedInPlayerData.id,
+
+      name:
+        loggedInPlayerData.name,
+    }
+
+  // --------------------------------------------------
+  // SEASON
+  // --------------------------------------------------
 
   const {
     data: season,
@@ -471,9 +542,12 @@ export default async function HistoryPage() {
       id,
       year
     `)
-    .order('year', {
-      ascending: false,
-    })
+    .order(
+      'year',
+      {
+        ascending: false,
+      }
+    )
     .limit(1)
     .maybeSingle()
 
@@ -486,7 +560,9 @@ export default async function HistoryPage() {
   if (!season) {
     return (
       <main className="min-h-screen bg-slate-950 p-6 text-white">
+
         <div className="mx-auto max-w-6xl">
+
           <h1 className="text-4xl font-black">
             Season History
           </h1>
@@ -496,17 +572,25 @@ export default async function HistoryPage() {
           </div>
 
           <div className="mt-8 pb-8">
+
             <a
               href="/"
               className="flex min-h-14 w-full items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 px-5 py-4 text-center text-base font-black text-white transition hover:bg-slate-800"
             >
               ← Back to Spread Wars
             </a>
+
           </div>
+
         </div>
+
       </main>
     )
   }
+
+  // --------------------------------------------------
+  // PLAYERS
+  // --------------------------------------------------
 
   const {
     data: playersData,
@@ -526,21 +610,28 @@ export default async function HistoryPage() {
   }
 
   const players =
-    (playersData ?? []) as Player[]
+    (playersData ??
+      []) as Player[]
 
   const geoff =
     players.find(
       (player) =>
-        player.name.toLowerCase() ===
+        player.name
+          .toLowerCase() ===
         'geoff'
     ) ?? null
 
   const general =
     players.find(
       (player) =>
-        player.name.toLowerCase() ===
+        player.name
+          .toLowerCase() ===
         'general'
     ) ?? null
+
+  // --------------------------------------------------
+  // WEEKS
+  // --------------------------------------------------
 
   const {
     data: weeksData,
@@ -559,9 +650,12 @@ export default async function HistoryPage() {
       'season_id',
       season.id
     )
-    .order('week_number', {
-      ascending: true,
-    })
+    .order(
+      'week_number',
+      {
+        ascending: true,
+      }
+    )
 
   if (weeksError) {
     throw new Error(
@@ -570,7 +664,8 @@ export default async function HistoryPage() {
   }
 
   const weeks =
-    (weeksData ?? []) as Week[]
+    (weeksData ??
+      []) as Week[]
 
   const weekIds =
     weeks.map(
@@ -578,9 +673,16 @@ export default async function HistoryPage() {
         week.id
     )
 
+  // --------------------------------------------------
+  // PICKS
+  // --------------------------------------------------
+
   let picks: Pick[] = []
 
-  if (weekIds.length > 0) {
+  if (
+    weekIds.length >
+    0
+  ) {
     const {
       data: picksData,
       error: picksError,
@@ -601,9 +703,12 @@ export default async function HistoryPage() {
         'week_id',
         weekIds
       )
-      .order('pick_number', {
-        ascending: true,
-      })
+      .order(
+        'pick_number',
+        {
+          ascending: true,
+        }
+      )
 
     if (picksError) {
       throw new Error(
@@ -612,8 +717,13 @@ export default async function HistoryPage() {
     }
 
     picks =
-      (picksData ?? []) as Pick[]
+      (picksData ??
+        []) as Pick[]
   }
+
+  // --------------------------------------------------
+  // GAMES
+  // --------------------------------------------------
 
   const gameIds =
     Array.from(
@@ -627,7 +737,10 @@ export default async function HistoryPage() {
 
   let games: Game[] = []
 
-  if (gameIds.length > 0) {
+  if (
+    gameIds.length >
+    0
+  ) {
     const {
       data: gamesData,
       error: gamesError,
@@ -653,17 +766,30 @@ export default async function HistoryPage() {
     }
 
     games =
-      (gamesData ?? []) as Game[]
+      (gamesData ??
+        []) as Game[]
   }
 
-  let adjustments: Adjustment[] = []
+  // --------------------------------------------------
+  // ADJUSTMENTS
+  // --------------------------------------------------
 
-  if (weekIds.length > 0) {
+  let adjustments:
+    Adjustment[] = []
+
+  if (
+    weekIds.length >
+    0
+  ) {
     const {
-      data: adjustmentsData,
-      error: adjustmentsError,
+      data:
+        adjustmentsData,
+      error:
+        adjustmentsError,
     } = await supabase
-      .from('result_adjustments')
+      .from(
+        'result_adjustments'
+      )
       .select(`
         week_id,
         target_player_id,
@@ -680,42 +806,57 @@ export default async function HistoryPage() {
         'approved'
       )
 
-    if (adjustmentsError) {
+    if (
+      adjustmentsError
+    ) {
       throw new Error(
         adjustmentsError.message
       )
     }
 
     adjustments =
-      (adjustmentsData ?? []) as Adjustment[]
+      (adjustmentsData ??
+        []) as Adjustment[]
   }
 
-  const standings: Standing[] =
-    players.map((player) => {
-      const record =
-        calculateHeadToHeadRecord(
-          player.id,
-          players,
-          picks,
-          adjustments
-        )
+  // --------------------------------------------------
+  // STANDINGS
+  // --------------------------------------------------
 
-      const decisions =
-        record.wins + record.losses
+  const standings:
+    Standing[] =
+    players.map(
+      (player) => {
+        const record =
+          calculateHeadToHeadRecord(
+            player.id,
+            players,
+            picks,
+            adjustments
+          )
 
-      const percentage =
-        decisions > 0
-          ? record.wins / decisions
-          : 0
+        const decisions =
+          record.wins +
+          record.losses
 
-      return {
-        player,
-        wins: record.wins,
-        losses: record.losses,
-        pushes: record.pushes,
-        percentage,
+        const percentage =
+          decisions > 0
+            ? record.wins /
+              decisions
+            : 0
+
+        return {
+          player,
+          wins:
+            record.wins,
+          losses:
+            record.losses,
+          pushes:
+            record.pushes,
+          percentage,
+        }
       }
-    })
+    )
 
   const geoffStanding =
     geoff
@@ -736,51 +877,74 @@ export default async function HistoryPage() {
       : null
 
   const geoffSeasonWins =
-    geoffStanding?.wins ?? 0
+    geoffStanding?.wins ??
+    0
 
   const generalSeasonWins =
-    generalStanding?.wins ?? 0
+    generalStanding?.wins ??
+    0
 
   const runningGeneralLead =
     STARTING_GENERAL_LEAD +
     generalSeasonWins -
     geoffSeasonWins
 
+  // --------------------------------------------------
+  // PAGE
+  // --------------------------------------------------
+
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6">
+
       <div className="mx-auto max-w-6xl">
+
         {/* HEADER */}
+
         <header className="mb-8">
+
           <div className="flex flex-wrap items-end justify-between gap-4">
+
             <div>
+
               <h1 className="text-4xl font-black sm:text-5xl">
                 Season History
               </h1>
 
               <p className="mt-2 text-slate-400">
-                {season.year} Spread Wars
+                {season.year}{' '}
+                Spread Wars
               </p>
+
             </div>
 
             <div className="rounded-xl border border-slate-800 bg-slate-900 px-4 py-3">
+
               <div className="text-xs uppercase text-slate-500">
                 Signed In
               </div>
 
               <div className="font-black text-emerald-400">
-                {loggedInPlayer.name}
+                {
+                  loggedInPlayer.name
+                }
               </div>
+
             </div>
+
           </div>
+
         </header>
 
-        {/* SEASON STANDINGS */}
+        {/* STANDINGS */}
+
         <section className="mb-8">
+
           <h2 className="mb-4 text-2xl font-black">
             Season Standings
           </h2>
 
           <div className="grid gap-4 md:grid-cols-3">
+
             {[
               geoffStanding,
               generalStanding,
@@ -789,37 +953,62 @@ export default async function HistoryPage() {
                 (
                   standing
                 ): standing is Standing =>
-                  standing !== null
+                  standing !==
+                  null
               )
-              .map((standing) => (
-                <div
-                  key={standing.player.id}
-                  className="rounded-2xl border border-slate-800 bg-slate-900 p-6"
-                >
-                  <div className="text-2xl font-black">
-                    {standing.player.name}
-                  </div>
+              .map(
+                (
+                  standing
+                ) => (
+                  <div
+                    key={
+                      standing.player.id
+                    }
+                    className="rounded-2xl border border-slate-800 bg-slate-900 p-6"
+                  >
 
-                  <div className="mt-1 text-sm text-slate-400">
-                    Head-to-Head Season Record
-                  </div>
+                    <div className="text-2xl font-black">
+                      {
+                        standing.player.name
+                      }
+                    </div>
 
-                  <div className="mt-5 text-4xl font-black">
-                    {standing.wins}-
-                    {standing.losses}-
-                    {standing.pushes}
-                  </div>
+                    <div className="mt-1 text-sm text-slate-400">
+                      Head-to-Head Season Record
+                    </div>
 
-                  <div className="mt-2 text-sm text-slate-400">
-                    {(
-                      standing.percentage * 100
-                    ).toFixed(1)}
-                    % winning percentage
+                    <div className="mt-5 text-4xl font-black">
+                      {
+                        standing.wins
+                      }
+                      -
+                      {
+                        standing.losses
+                      }
+                      -
+                      {
+                        standing.pushes
+                      }
+                    </div>
+
+                    <div className="mt-2 text-sm text-slate-400">
+                      {(
+                        standing.percentage *
+                        100
+                      ).toFixed(
+                        1
+                      )}
+                      % winning percentage
+                    </div>
+
                   </div>
-                </div>
-              ))}
+                )
+              )}
+
+            {/* OVERALL */}
 
             <div className="rounded-2xl border border-amber-700/60 bg-amber-950/30 p-6">
+
               <div className="text-2xl font-black">
                 Overall Tally
               </div>
@@ -829,17 +1018,27 @@ export default async function HistoryPage() {
               </div>
 
               <div className="mt-5 text-4xl font-black text-amber-300">
-                {runningGeneralLead > 0 ? (
+
+                {runningGeneralLead >
+                0 ? (
                   <>
-                    General +{runningGeneralLead}
+                    General +
+                    {
+                      runningGeneralLead
+                    }
                   </>
-                ) : runningGeneralLead < 0 ? (
+                ) : runningGeneralLead <
+                  0 ? (
                   <>
-                    Geoff +{Math.abs(runningGeneralLead)}
+                    Geoff +
+                    {Math.abs(
+                      runningGeneralLead
+                    )}
                   </>
                 ) : (
                   <>Tied</>
                 )}
+
               </div>
 
               <div className="mt-2 text-sm text-amber-100/70">
@@ -849,13 +1048,19 @@ export default async function HistoryPage() {
               <div className="mt-4 border-t border-amber-800/50 pt-4 text-xs text-amber-200/60">
                 Started this season with General +20
               </div>
+
             </div>
+
           </div>
+
         </section>
 
         {/* COLOR KEY */}
+
         <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-4">
+
           <div className="flex flex-wrap items-center gap-5 text-sm">
+
             <div className="font-black text-slate-300">
               From your perspective:
             </div>
@@ -880,256 +1085,357 @@ export default async function HistoryPage() {
                 Pending / Push
               </span>
             </div>
+
           </div>
+
         </section>
 
         {/* WEEK HISTORY */}
+
         <section>
+
           <h2 className="mb-4 text-2xl font-black">
             Week History
           </h2>
 
-          {weeks.length === 0 ? (
+          {weeks.length ===
+          0 ? (
             <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-slate-500">
               No weeks have been created yet.
             </div>
           ) : (
             <div className="space-y-6">
+
               {[...weeks]
                 .reverse()
-                .map((week) => {
-                  const weekPicks =
-                    picks.filter(
-                      (pick) =>
-                        pick.week_id ===
-                        week.id
-                    )
+                .map(
+                  (week) => {
+                    const weekPicks =
+                      picks.filter(
+                        (pick) =>
+                          pick.week_id ===
+                          week.id
+                      )
 
-                  const weekAdjustments =
-                    adjustments.filter(
-                      (
-                        adjustment
-                      ) =>
-                        adjustment.week_id ===
-                        week.id
-                    )
+                    const weekAdjustments =
+                      adjustments.filter(
+                        (
+                          adjustment
+                        ) =>
+                          adjustment.week_id ===
+                          week.id
+                      )
 
-                  const firstPicker =
-                    players.find(
-                      (player) =>
-                        player.id ===
-                        week.first_picker_id
-                    )
+                    const firstPicker =
+                      players.find(
+                        (player) =>
+                          player.id ===
+                          week.first_picker_id
+                      )
 
-                  const weekRecords =
-                    players.map(
-                      (player) => {
-                        const record =
-                          calculateHeadToHeadRecord(
-                            player.id,
-                            players,
-                            weekPicks,
-                            weekAdjustments
-                          )
+                    const weekRecords =
+                      players.map(
+                        (player) => {
+                          const record =
+                            calculateHeadToHeadRecord(
+                              player.id,
+                              players,
+                              weekPicks,
+                              weekAdjustments
+                            )
 
-                        return {
-                          player,
-                          ...record,
+                          return {
+                            player,
+                            ...record,
+                          }
                         }
-                      }
-                    )
-
-                  const automaticPicks =
-                    [...weekPicks]
-                      .filter(
-                        (pick) =>
-                          pick.is_automatic
-                      )
-                      .sort(
-                        (a, b) =>
-                          a.pick_number -
-                          b.pick_number
                       )
 
-                  const normalPicks =
-                    [...weekPicks]
-                      .filter(
-                        (pick) =>
-                          !pick.is_automatic
-                      )
-                      .sort(
-                        (a, b) =>
-                          a.pick_number -
-                          b.pick_number
-                      )
+                    const automaticPicks =
+                      [...weekPicks]
+                        .filter(
+                          (pick) =>
+                            pick.is_automatic
+                        )
+                        .sort(
+                          (
+                            a,
+                            b
+                          ) =>
+                            a.pick_number -
+                            b.pick_number
+                        )
 
-                  return (
-                    <article
-                      key={week.id}
-                      className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900"
-                    >
-                      {/* WEEK HEADER */}
-                      <div className="border-b border-slate-800 p-5 sm:p-6">
-                        <div className="flex flex-wrap items-start justify-between gap-4">
-                          <div>
-                            <div className="flex items-center gap-3">
-                              <h3 className="text-2xl font-black">
-                                Week {week.week_number}
-                              </h3>
+                    const normalPicks =
+                      [...weekPicks]
+                        .filter(
+                          (pick) =>
+                            !pick.is_automatic
+                        )
+                        .sort(
+                          (
+                            a,
+                            b
+                          ) =>
+                            a.pick_number -
+                            b.pick_number
+                        )
 
-                              <span
-                                className={`rounded-full px-3 py-1 text-xs font-black uppercase ${
-                                  week.status === 'complete'
-                                    ? 'bg-emerald-950 text-emerald-400'
-                                    : 'bg-cyan-950 text-cyan-400'
-                                }`}
-                              >
-                                {week.status}
-                              </span>
-                            </div>
+                    return (
+                      <article
+                        key={
+                          week.id
+                        }
+                        className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900"
+                      >
 
-                            <p className="mt-2 text-sm text-slate-400">
-                              First normal pick:{' '}
-                              <strong className="text-slate-200">
-                                {firstPicker?.name ?? '—'}
-                              </strong>
-                            </p>
-                          </div>
+                        {/* WEEK HEADER */}
 
-                          <div className="flex flex-wrap gap-3">
-                            {weekRecords.map(
-                              (record) => (
-                                <div
-                                  key={record.player.id}
-                                  className="rounded-xl bg-slate-800 px-4 py-3 text-center"
+                        <div className="border-b border-slate-800 p-5 sm:p-6">
+
+                          <div className="flex flex-wrap items-start justify-between gap-4">
+
+                            <div>
+
+                              <div className="flex items-center gap-3">
+
+                                <h3 className="text-2xl font-black">
+                                  Week{' '}
+                                  {
+                                    week.week_number
+                                  }
+                                </h3>
+
+                                <span
+                                  className={`rounded-full px-3 py-1 text-xs font-black uppercase ${
+                                    week.status ===
+                                    'complete'
+                                      ? 'bg-emerald-950 text-emerald-400'
+                                      : 'bg-cyan-950 text-cyan-400'
+                                  }`}
                                 >
-                                  <div className="text-xs text-slate-400">
-                                    {record.player.name}
-                                  </div>
+                                  {
+                                    week.status
+                                  }
+                                </span>
 
-                                  <div className="mt-1 font-black">
-                                    {record.wins}-
-                                    {record.losses}-
-                                    {record.pushes}
+                              </div>
+
+                              <p className="mt-2 text-sm text-slate-400">
+                                First normal pick:{' '}
+                                <strong className="text-slate-200">
+                                  {firstPicker?.name ??
+                                    '—'}
+                                </strong>
+                              </p>
+
+                            </div>
+
+                            <div className="flex flex-wrap gap-3">
+
+                              {weekRecords.map(
+                                (
+                                  record
+                                ) => (
+                                  <div
+                                    key={
+                                      record.player.id
+                                    }
+                                    className="rounded-xl bg-slate-800 px-4 py-3 text-center"
+                                  >
+
+                                    <div className="text-xs text-slate-400">
+                                      {
+                                        record.player.name
+                                      }
+                                    </div>
+
+                                    <div className="mt-1 font-black">
+                                      {
+                                        record.wins
+                                      }
+                                      -
+                                      {
+                                        record.losses
+                                      }
+                                      -
+                                      {
+                                        record.pushes
+                                      }
+                                    </div>
+
                                   </div>
-                                </div>
-                              )
-                            )}
+                                )
+                              )}
+
+                            </div>
+
                           </div>
-                        </div>
-                      </div>
 
-                      {weekPicks.length === 0 ? (
-                        <div className="p-6 text-slate-500">
-                          No picks recorded for this week.
                         </div>
-                      ) : (
-                        <div className="space-y-6 p-4 sm:p-6">
-                          {/* AUTOMATIC PICKS */}
-                          {automaticPicks.length > 0 && (
-                            <div>
-                              <div className="mb-3 text-sm font-black text-cyan-400">
-                                Automatic Picks
-                              </div>
 
-                              <div className="space-y-4">
-                                {automaticPicks.map(
-                                  (pick) => {
-                                    const player =
-                                      players.find(
-                                        (
-                                          item
-                                        ) =>
-                                          item.id ===
-                                          pick.player_id
+                        {weekPicks.length ===
+                        0 ? (
+                          <div className="p-6 text-slate-500">
+                            No picks recorded for this week.
+                          </div>
+                        ) : (
+                          <div className="space-y-7 p-4 sm:p-6">
+
+                            {/* AUTOMATIC PICKS */}
+
+                            {automaticPicks.length >
+                              0 && (
+                              <div>
+
+                                <div className="mb-3 text-sm font-black text-cyan-400">
+                                  Automatic Picks
+                                </div>
+
+                                <div className="space-y-4">
+
+                                  {automaticPicks.map(
+                                    (
+                                      pick,
+                                      index
+                                    ) => {
+                                      const player =
+                                        players.find(
+                                          (
+                                            item
+                                          ) =>
+                                            item.id ===
+                                            pick.player_id
+                                        )
+
+                                      if (
+                                        !player
+                                      ) {
+                                        return null
+                                      }
+
+                                      return (
+                                        <PickCard
+                                          key={
+                                            pick.id
+                                          }
+                                          player={
+                                            player
+                                          }
+                                          pick={
+                                            pick
+                                          }
+                                          games={
+                                            games
+                                          }
+                                          loggedInPlayerId={
+                                            loggedInPlayer.id
+                                          }
+                                          displayNumber={
+                                            index +
+                                            1
+                                          }
+                                        />
                                       )
-
-                                    if (!player) {
-                                      return null
                                     }
+                                  )}
 
-                                    return (
-                                      <PickMatchupRow
-                                        key={pick.id}
-                                        player={player}
-                                        pick={pick}
-                                        games={games}
-                                        loggedInPlayerId={
-                                          loggedInPlayer.id
-                                        }
-                                        label="Automatic Pick"
-                                      />
-                                    )
-                                  }
-                                )}
+                                </div>
+
                               </div>
-                            </div>
-                          )}
+                            )}
 
-                          {/* DRAFT PICKS */}
-                          {normalPicks.length > 0 && (
-                            <div>
-                              <div className="mb-3 text-sm font-black text-slate-300">
-                                Draft Picks
-                              </div>
+                            {/* PICKS */}
 
-                              <div className="space-y-4">
-                                {normalPicks.map(
-                                  (
-                                    pick,
-                                    index
-                                  ) => {
-                                    const player =
-                                      players.find(
-                                        (
-                                          item
-                                        ) =>
-                                          item.id ===
-                                          pick.player_id
+                            {normalPicks.length >
+                              0 && (
+                              <div>
+
+                                <div className="mb-3 text-lg font-black text-white">
+                                  Picks
+                                </div>
+
+                                <div className="space-y-5">
+
+                                  {normalPicks.map(
+                                    (
+                                      pick,
+                                      index
+                                    ) => {
+                                      const player =
+                                        players.find(
+                                          (
+                                            item
+                                          ) =>
+                                            item.id ===
+                                            pick.player_id
+                                        )
+
+                                      if (
+                                        !player
+                                      ) {
+                                        return null
+                                      }
+
+                                      return (
+                                        <PickCard
+                                          key={
+                                            pick.id
+                                          }
+                                          player={
+                                            player
+                                          }
+                                          pick={
+                                            pick
+                                          }
+                                          games={
+                                            games
+                                          }
+                                          loggedInPlayerId={
+                                            loggedInPlayer.id
+                                          }
+                                          displayNumber={
+                                            index +
+                                            1
+                                          }
+                                        />
                                       )
-
-                                    if (!player) {
-                                      return null
                                     }
+                                  )}
 
-                                    return (
-                                      <PickMatchupRow
-                                        key={pick.id}
-                                        player={player}
-                                        pick={pick}
-                                        games={games}
-                                        loggedInPlayerId={
-                                          loggedInPlayer.id
-                                        }
-                                        label={`Pick ${
-                                          index + 1
-                                        }`}
-                                      />
-                                    )
-                                  }
-                                )}
+                                </div>
+
                               </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </article>
-                  )
-                })}
+                            )}
+
+                          </div>
+                        )}
+
+                      </article>
+                    )
+                  }
+                )}
+
             </div>
           )}
+
         </section>
 
-        {/* BACK BUTTON */}
+        {/* BACK */}
+
         <div className="mt-8 pb-8">
+
           <a
             href="/"
             className="flex min-h-14 w-full items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 px-5 py-4 text-center text-base font-black text-white transition hover:bg-slate-800"
           >
             ← Back to Spread Wars
           </a>
+
         </div>
+
       </div>
+
     </main>
   )
 }
