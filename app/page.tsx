@@ -65,50 +65,97 @@ type ApprovedAdjustment = {
 
 function calculateRecord(
   playerId: string,
+  allPlayers: Player[],
   picks: Pick[],
   adjustments: ApprovedAdjustment[]
 ) {
-  const playerPicks =
-    picks.filter(
-      (pick) =>
-        pick.player_id === playerId
-    )
+  let wins = 0
+  let losses = 0
+  let pushes = 0
 
-  let wins =
-    playerPicks.filter(
-      (pick) =>
-        pick.result === 'win'
-    ).length
+  // --------------------------------------------------
+  // HEAD-TO-HEAD PICK RESULTS
+  // --------------------------------------------------
 
-  let losses =
-    playerPicks.filter(
-      (pick) =>
-        pick.result === 'loss'
-    ).length
+  for (const pick of picks) {
+    if (pick.result === 'pending') {
+      continue
+    }
 
-  let pushes =
-    playerPicks.filter(
-      (pick) =>
-        pick.result === 'push'
-    ).length
+    if (pick.result === 'push') {
+      pushes++
+      continue
+    }
 
-  const playerAdjustments =
-    adjustments.filter(
-      (adjustment) =>
-        adjustment.target_player_id ===
-        playerId
-    )
+    const isMyPick =
+      pick.player_id === playerId
 
-  for (
-    const adjustment of
-    playerAdjustments
-  ) {
-    wins +=
+    if (isMyPick) {
+      if (pick.result === 'win') {
+        wins++
+      }
+
+      if (pick.result === 'loss') {
+        losses++
+      }
+
+      continue
+    }
+
+    if (pick.result === 'win') {
+      losses++
+    }
+
+    if (pick.result === 'loss') {
+      wins++
+    }
+  }
+
+  // --------------------------------------------------
+  // APPROVED ADJUSTMENTS
+  // --------------------------------------------------
+
+  for (const adjustment of adjustments) {
+    const isMyAdjustment =
+      adjustment.target_player_id ===
+      playerId
+
+    if (isMyAdjustment) {
+      wins +=
+        Number(
+          adjustment.wins_delta
+        ) || 0
+
+      losses +=
+        Number(
+          adjustment.losses_delta
+        ) || 0
+
+      pushes +=
+        Number(
+          adjustment.pushes_delta
+        ) || 0
+
+      continue
+    }
+
+    const adjustmentPlayerExists =
+      allPlayers.some(
+        (player) =>
+          player.id ===
+          adjustment.target_player_id
+      )
+
+    if (!adjustmentPlayerExists) {
+      continue
+    }
+
+    losses +=
       Number(
         adjustment.wins_delta
       ) || 0
 
-    losses +=
+    wins +=
       Number(
         adjustment.losses_delta
       ) || 0
@@ -739,7 +786,7 @@ export default async function HomePage() {
     )
 
   // --------------------------------------------------
-  // RECORDS
+  // HEAD-TO-HEAD RECORDS
   // --------------------------------------------------
 
   const playerRecords =
@@ -750,6 +797,7 @@ export default async function HomePage() {
         record:
           calculateRecord(
             player.id,
+            players,
             picks,
             adjustments
           ),
