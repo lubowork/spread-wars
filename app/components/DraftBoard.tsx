@@ -144,6 +144,95 @@ function formatLastSync(
   )
 }
 
+function formatNextSync(
+  date: Date
+) {
+  return new Intl.DateTimeFormat(
+    'en-US',
+    {
+      timeZone:
+        'America/New_York',
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    }
+  ).format(date)
+}
+
+function getOddsSyncIntervalMinutes(
+  hoursUntilKickoff: number
+) {
+  if (
+    hoursUntilKickoff > 72
+  ) {
+    return 12 * 60
+  }
+
+  if (
+    hoursUntilKickoff > 48
+  ) {
+    return 8 * 60
+  }
+
+  if (
+    hoursUntilKickoff > 24
+  ) {
+    return 4 * 60
+  }
+
+  if (
+    hoursUntilKickoff > 12
+  ) {
+    return 2 * 60
+  }
+
+  if (
+    hoursUntilKickoff > 6
+  ) {
+    return 60
+  }
+
+  if (
+    hoursUntilKickoff > 3
+  ) {
+    return 30
+  }
+
+  return 15
+}
+
+function roundUpToNextCronSlot(
+  date: Date
+) {
+  const result =
+    new Date(date)
+
+  result.setSeconds(
+    0,
+    0
+  )
+
+  const minutes =
+    result.getMinutes()
+
+  const remainder =
+    minutes % 15
+
+  if (
+    remainder !== 0
+  ) {
+    result.setMinutes(
+      minutes +
+        (15 - remainder)
+    )
+  }
+
+  return result
+}
+
 export default function DraftBoard({
   players,
   games,
@@ -393,9 +482,6 @@ export default function DraftBoard({
 
   // --------------------------------------------------
   // LAST ODDS SYNC
-  //
-  // Find the newest DraftKings fetched_at timestamp
-  // across all games currently loaded on the board.
   // --------------------------------------------------
 
   const allFetchedTimes =
@@ -426,6 +512,73 @@ export default function DraftBoard({
               : latest
         )
       : null
+
+  // --------------------------------------------------
+  // NEXT ODDS SYNC
+  //
+  // Use the same smart timing tiers as the sync route.
+  // Supabase checks every 15 minutes, so round the
+  // expected sync forward to the next cron slot.
+  // --------------------------------------------------
+
+  const nextUpcomingGame =
+    [...games]
+      .filter(
+        (game) =>
+          new Date(
+            game.start_time
+          ).getTime() >
+          Date.now()
+      )
+      .sort(
+        (a, b) =>
+          new Date(
+            a.start_time
+          ).getTime() -
+          new Date(
+            b.start_time
+          ).getTime()
+      )[0] ?? null
+
+  let nextSyncAt:
+    Date | null = null
+
+  if (
+    lastSyncedAt &&
+    nextUpcomingGame
+  ) {
+    const lastSyncDate =
+      new Date(
+        lastSyncedAt
+      )
+
+    const hoursUntilKickoffAtLastSync =
+      (
+        new Date(
+          nextUpcomingGame.start_time
+        ).getTime() -
+        lastSyncDate.getTime()
+      ) /
+      (1000 * 60 * 60)
+
+    const intervalMinutes =
+      getOddsSyncIntervalMinutes(
+        hoursUntilKickoffAtLastSync
+      )
+
+    const earliestNextSync =
+      new Date(
+        lastSyncDate.getTime() +
+          intervalMinutes *
+            60 *
+            1000
+      )
+
+    nextSyncAt =
+      roundUpToNextCronSlot(
+        earliestNextSync
+      )
+  }
 
   // --------------------------------------------------
   // ALPHABETICAL TEAM DROPDOWN
@@ -1062,31 +1215,53 @@ export default function DraftBoard({
 
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
 
-          <div>
+          <div className="w-full sm:w-auto sm:flex-1">
 
             <h2 className="text-2xl font-black">
               Available Games
             </h2>
 
-            <div className="mt-1 text-xs text-slate-500">
+            <div className="mt-1 flex flex-wrap items-center justify-between gap-x-6 gap-y-1 text-xs text-slate-500">
 
-              {lastSyncedAt ? (
-                <>
-                  Last synced:{' '}
-                  <span className="font-bold text-slate-300">
-                    {formatLastSync(
-                      lastSyncedAt
+              <div>
+
+                {lastSyncedAt ? (
+                  <>
+                    Last synced:{' '}
+                    <span className="font-bold text-slate-300">
+                      {formatLastSync(
+                        lastSyncedAt
+                      )}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    Last synced:{' '}
+                    <span className="font-bold text-amber-400">
+                      No odds sync available
+                    </span>
+                  </>
+                )}
+
+              </div>
+
+              <div>
+
+                Next sync:{' '}
+
+                {nextSyncAt ? (
+                  <span className="font-bold text-cyan-300">
+                    {formatNextSync(
+                      nextSyncAt
                     )}
                   </span>
-                </>
-              ) : (
-                <>
-                  Last synced:{' '}
-                  <span className="font-bold text-amber-400">
-                    No odds sync available
+                ) : (
+                  <span className="font-bold text-slate-400">
+                    —
                   </span>
-                </>
-              )}
+                )}
+
+              </div>
 
             </div>
 
