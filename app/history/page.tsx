@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '../../lib/supabase-server'
 import { createAdminClient } from '../../lib/supabase-admin'
+import HistoryTeamFilter from './HistoryTeamFilter'
 
 type Player = {
   id: string
@@ -97,22 +98,30 @@ function formatGameDateTime(
       timeZoneName: 'short',
     }
   ).format(
-    new Date(isoDate)
+    new Date(
+      isoDate
+    )
   )
 }
 
 function resultBadgeClasses(
   result: string
 ) {
-  if (result === 'win') {
+  if (
+    result === 'win'
+  ) {
     return 'border border-emerald-700 bg-emerald-950 text-emerald-300'
   }
 
-  if (result === 'loss') {
+  if (
+    result === 'loss'
+  ) {
     return 'border border-red-700 bg-red-950 text-red-300'
   }
 
-  if (result === 'push') {
+  if (
+    result === 'push'
+  ) {
     return 'border border-amber-700 bg-amber-950 text-amber-300'
   }
 
@@ -124,8 +133,10 @@ function perspectiveCardClasses(
   loggedInPlayerId: string
 ) {
   if (
-    pick.result === 'pending' ||
-    pick.result === 'push'
+    pick.result ===
+      'pending' ||
+    pick.result ===
+      'push'
   ) {
     return 'border-slate-700 bg-slate-950/70'
   }
@@ -137,11 +148,13 @@ function perspectiveCardClasses(
   const goodForMe =
     (
       isMyPick &&
-      pick.result === 'win'
+      pick.result ===
+        'win'
     ) ||
     (
       !isMyPick &&
-      pick.result === 'loss'
+      pick.result ===
+        'loss'
     )
 
   if (goodForMe) {
@@ -413,8 +426,10 @@ function PickCard({
   const isFinal =
     Boolean(
       game?.completed &&
-      pickedScore !== null &&
-      opponentScore !== null
+      pickedScore !==
+        null &&
+      opponentScore !==
+        null
     )
 
   return (
@@ -424,16 +439,22 @@ function PickCard({
         loggedInPlayerId
       )}`}
     >
+
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
 
         <div className="text-sm font-black uppercase text-slate-200">
-          Pick {displayNumber}
+          Pick{' '}
+          {displayNumber}
           {' - '}
-          {player.name}
+          {
+            player.name
+          }
         </div>
 
         <div className="min-w-0 flex-1 text-base font-black uppercase text-white sm:text-lg">
-          {pick.team}
+          {
+            pick.team
+          }
         </div>
 
         <div className="shrink-0 text-xl font-black text-cyan-300">
@@ -451,7 +472,9 @@ function PickCard({
             pick.result
           )}`}
         >
-          {pick.result}
+          {
+            pick.result
+          }
         </span>
 
         {game?.start_time && (
@@ -477,11 +500,14 @@ function PickCard({
           <div className="min-w-0">
 
             <div className="break-words text-base font-black text-white sm:text-lg">
-              {pick.team}
+              {
+                pick.team
+              }
             </div>
 
             <div className="mt-2 text-5xl font-black leading-none text-white sm:text-4xl">
-              {pickedScore !== null
+              {pickedScore !==
+              null
                 ? pickedScore
                 : '—'}
             </div>
@@ -496,7 +522,8 @@ function PickCard({
             </div>
 
             <div className="mt-2 text-5xl font-black leading-none text-white sm:text-4xl">
-              {opponentScore !== null
+              {opponentScore !==
+              null
                 ? opponentScore
                 : '—'}
             </div>
@@ -539,7 +566,9 @@ export default async function HistoryPage({
     await authSupabase.auth.getUser()
 
   if (!user) {
-    redirect('/login')
+    redirect(
+      '/login'
+    )
   }
 
   const supabase =
@@ -551,7 +580,9 @@ export default async function HistoryPage({
     error:
       loggedInPlayerError,
   } = await supabase
-    .from('players')
+    .from(
+      'players'
+    )
     .select(`
       id,
       name
@@ -605,11 +636,18 @@ export default async function HistoryPage({
         loggedInPlayerData.name,
     }
 
+  // --------------------------------------------------
+  // SEASON
+  // --------------------------------------------------
+
   const {
     data: season,
-    error: seasonError,
+    error:
+      seasonError,
   } = await supabase
-    .from('seasons')
+    .from(
+      'seasons'
+    )
     .select(`
       id,
       year
@@ -623,7 +661,9 @@ export default async function HistoryPage({
     .limit(1)
     .maybeSingle()
 
-  if (seasonError) {
+  if (
+    seasonError
+  ) {
     throw new Error(
       seasonError.message
     )
@@ -660,26 +700,40 @@ export default async function HistoryPage({
     )
   }
 
+  // --------------------------------------------------
+  // PLAYERS
+  // --------------------------------------------------
+
   const {
-    data: playersData,
-    error: playersError,
+    data:
+      playersData,
+    error:
+      playersError,
   } = await supabase
-    .from('players')
+    .from(
+      'players'
+    )
     .select(`
       id,
       name
     `)
-    .order('name')
+    .order(
+      'name'
+    )
 
-  if (playersError) {
+  if (
+    playersError
+  ) {
     throw new Error(
       playersError.message
     )
   }
 
   const players =
-    (playersData ??
-      []) as Player[]
+    (
+      playersData ??
+      []
+    ) as Player[]
 
   const geoff =
     players.find(
@@ -687,7 +741,8 @@ export default async function HistoryPage({
         player.name
           .toLowerCase() ===
         'geoff'
-    ) ?? null
+    ) ??
+    null
 
   const general =
     players.find(
@@ -695,13 +750,22 @@ export default async function HistoryPage({
         player.name
           .toLowerCase() ===
         'general'
-    ) ?? null
+    ) ??
+    null
+
+  // --------------------------------------------------
+  // WEEKS
+  // --------------------------------------------------
 
   const {
-    data: weeksData,
-    error: weeksError,
+    data:
+      weeksData,
+    error:
+      weeksError,
   } = await supabase
-    .from('weeks')
+    .from(
+      'weeks'
+    )
     .select(`
       id,
       week_number,
@@ -721,15 +785,19 @@ export default async function HistoryPage({
       }
     )
 
-  if (weeksError) {
+  if (
+    weeksError
+  ) {
     throw new Error(
       weeksError.message
     )
   }
 
   const weeks =
-    (weeksData ??
-      []) as Week[]
+    (
+      weeksData ??
+      []
+    ) as Week[]
 
   const weekIds =
     weeks.map(
@@ -737,17 +805,26 @@ export default async function HistoryPage({
         week.id
     )
 
-  let picks: Pick[] = []
+  // --------------------------------------------------
+  // PICKS
+  // --------------------------------------------------
+
+  let picks:
+    Pick[] = []
 
   if (
     weekIds.length >
     0
   ) {
     const {
-      data: picksData,
-      error: picksError,
+      data:
+        picksData,
+      error:
+        picksError,
     } = await supabase
-      .from('picks')
+      .from(
+        'picks'
+      )
       .select(`
         id,
         week_id,
@@ -770,16 +847,24 @@ export default async function HistoryPage({
         }
       )
 
-    if (picksError) {
+    if (
+      picksError
+    ) {
       throw new Error(
         picksError.message
       )
     }
 
     picks =
-      (picksData ??
-        []) as Pick[]
+      (
+        picksData ??
+        []
+      ) as Pick[]
   }
+
+  // --------------------------------------------------
+  // GAMES
+  // --------------------------------------------------
 
   const gameIds =
     Array.from(
@@ -791,17 +876,22 @@ export default async function HistoryPage({
       )
     )
 
-  let games: Game[] = []
+  let games:
+    Game[] = []
 
   if (
     gameIds.length >
     0
   ) {
     const {
-      data: gamesData,
-      error: gamesError,
+      data:
+        gamesData,
+      error:
+        gamesError,
     } = await supabase
-      .from('games')
+      .from(
+        'games'
+      )
       .select(`
         id,
         home_team,
@@ -816,16 +906,24 @@ export default async function HistoryPage({
         gameIds
       )
 
-    if (gamesError) {
+    if (
+      gamesError
+    ) {
       throw new Error(
         gamesError.message
       )
     }
 
     games =
-      (gamesData ??
-        []) as Game[]
+      (
+        gamesData ??
+        []
+      ) as Game[]
   }
+
+  // --------------------------------------------------
+  // ADJUSTMENTS
+  // --------------------------------------------------
 
   let adjustments:
     Adjustment[] = []
@@ -868,9 +966,15 @@ export default async function HistoryPage({
     }
 
     adjustments =
-      (adjustmentsData ??
-        []) as Adjustment[]
+      (
+        adjustmentsData ??
+        []
+      ) as Adjustment[]
   }
+
+  // --------------------------------------------------
+  // STANDINGS
+  // --------------------------------------------------
 
   const standings:
     Standing[] =
@@ -889,23 +993,20 @@ export default async function HistoryPage({
           record.losses
 
         const percentage =
-          decisions > 0
+          decisions >
+          0
             ? record.wins /
               decisions
             : 0
 
         return {
           player,
-
           wins:
             record.wins,
-
           losses:
             record.losses,
-
           pushes:
             record.pushes,
-
           percentage,
         }
       }
@@ -915,33 +1016,44 @@ export default async function HistoryPage({
     geoff
       ? standings.find(
           (standing) =>
-            standing.player.id ===
+            standing
+              .player
+              .id ===
             geoff.id
-        ) ?? null
+        ) ??
+        null
       : null
 
   const generalStanding =
     general
       ? standings.find(
           (standing) =>
-            standing.player.id ===
+            standing
+              .player
+              .id ===
             general.id
-        ) ?? null
+        ) ??
+        null
       : null
 
   const loggedInStanding =
     standings.find(
       (standing) =>
-        standing.player.id ===
+        standing
+          .player
+          .id ===
         loggedInPlayer.id
-    ) ?? null
+    ) ??
+    null
 
   const geoffSeasonWins =
-    geoffStanding?.wins ??
+    geoffStanding
+      ?.wins ??
     0
 
   const generalSeasonWins =
-    generalStanding?.wins ??
+    generalStanding
+      ?.wins ??
     0
 
   const runningGeneralLead =
@@ -949,10 +1061,16 @@ export default async function HistoryPage({
     generalSeasonWins -
     geoffSeasonWins
 
+  // --------------------------------------------------
+  // SELECTED WEEK
+  // --------------------------------------------------
+
   const latestWeek =
-    weeks.length > 0
+    weeks.length >
+    0
       ? weeks[
-          weeks.length - 1
+          weeks.length -
+            1
         ]
       : null
 
@@ -964,7 +1082,8 @@ export default async function HistoryPage({
           (week) =>
             week.week_number ===
             requestedWeekNumber
-        ) ?? null
+        ) ??
+        null
       : null
 
   const selectedWeek =
@@ -990,6 +1109,10 @@ export default async function HistoryPage({
             selectedWeek.id
         )
       : []
+
+  // --------------------------------------------------
+  // TEAM DROPDOWN
+  // --------------------------------------------------
 
   const selectedWeekGameIds =
     new Set(
@@ -1018,7 +1141,10 @@ export default async function HistoryPage({
         )
       )
     ).sort(
-      (a, b) =>
+      (
+        a,
+        b
+      ) =>
         a.localeCompare(
           b,
           'en',
@@ -1037,6 +1163,10 @@ export default async function HistoryPage({
       ? selectedTeam
       : ''
 
+  // --------------------------------------------------
+  // FILTER PICKS
+  // --------------------------------------------------
+
   const filteredWeekPicks =
     selectedWeekPicks.filter(
       (pick) =>
@@ -1053,7 +1183,8 @@ export default async function HistoryPage({
           (player) =>
             player.id ===
             selectedWeek.first_picker_id
-        ) ?? null
+        ) ??
+        null
       : null
 
   const selectedWeekRecords =
@@ -1079,9 +1210,12 @@ export default async function HistoryPage({
   const loggedInWeekRecord =
     selectedWeekRecords.find(
       (record) =>
-        record.player.id ===
+        record
+          .player
+          .id ===
         loggedInPlayer.id
-    ) ?? null
+    ) ??
+    null
 
   const automaticPicks =
     filteredWeekPicks
@@ -1090,7 +1224,10 @@ export default async function HistoryPage({
           pick.is_automatic
       )
       .sort(
-        (a, b) =>
+        (
+          a,
+          b
+        ) =>
           a.pick_number -
           b.pick_number
       )
@@ -1102,7 +1239,10 @@ export default async function HistoryPage({
           !pick.is_automatic
       )
       .sort(
-        (a, b) =>
+        (
+          a,
+          b
+        ) =>
           a.pick_number -
           b.pick_number
       )
@@ -1114,7 +1254,10 @@ export default async function HistoryPage({
           !pick.is_automatic
       )
       .sort(
-        (a, b) =>
+        (
+          a,
+          b
+        ) =>
           a.pick_number -
           b.pick_number
       )
@@ -1126,10 +1269,17 @@ export default async function HistoryPage({
           pick.is_automatic
       )
       .sort(
-        (a, b) =>
+        (
+          a,
+          b
+        ) =>
           a.pick_number -
           b.pick_number
       )
+
+  // --------------------------------------------------
+  // PAGE
+  // --------------------------------------------------
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6">
@@ -1149,7 +1299,9 @@ export default async function HistoryPage({
               </h1>
 
               <p className="mt-2 text-slate-400">
-                {season.year}{' '}
+                {
+                  season.year
+                }{' '}
                 Spread Wars
               </p>
 
@@ -1188,7 +1340,9 @@ export default async function HistoryPage({
 
                 <div className="text-2xl font-black">
                   {
-                    loggedInStanding.player.name
+                    loggedInStanding
+                      .player
+                      .name
                   }
                 </div>
 
@@ -1343,19 +1497,12 @@ export default async function HistoryPage({
                         selectedWeek?.id ===
                         week.id
 
-                      const teamPart =
-                        validSelectedTeam
-                          ? `&team=${encodeURIComponent(
-                              validSelectedTeam
-                            )}`
-                          : ''
-
                       return (
                         <a
                           key={
                             week.id
                           }
-                          href={`/history?week=${week.week_number}${teamPart}`}
+                          href={`/history?week=${week.week_number}`}
                           className={`rounded-xl border px-5 py-3 text-sm font-black transition ${
                             isSelected
                               ? 'border-cyan-500 bg-cyan-950/60 text-cyan-300'
@@ -1375,90 +1522,25 @@ export default async function HistoryPage({
 
               </div>
 
-              {/* TEAM DROPDOWN */}
+              {/* AUTO-FILTER TEAM DROPDOWN */}
 
-              <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-4 sm:p-5">
+              {selectedWeek && (
+                <div className="mb-6">
 
-                <form
-                  method="get"
-                  action="/history"
-                  className="flex flex-col gap-3 sm:flex-row sm:items-end"
-                >
+                  <HistoryTeamFilter
+                    teams={
+                      availableTeams
+                    }
+                    selectedTeam={
+                      validSelectedTeam
+                    }
+                    weekNumber={
+                      selectedWeek.week_number
+                    }
+                  />
 
-                  {selectedWeek && (
-                    <input
-                      type="hidden"
-                      name="week"
-                      value={
-                        selectedWeek.week_number
-                      }
-                    />
-                  )}
-
-                  <div className="min-w-0 flex-1">
-
-                    <label
-                      htmlFor="history-team-filter"
-                      className="mb-2 block text-sm font-black text-slate-200"
-                    >
-                      Find a Team
-                    </label>
-
-                    <select
-                      id="history-team-filter"
-                      name="team"
-                      defaultValue={
-                        validSelectedTeam
-                      }
-                      className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-base font-bold text-slate-950"
-                    >
-
-                      <option value="">
-                        All Teams
-                      </option>
-
-                      {availableTeams.map(
-                        (team) => (
-                          <option
-                            key={
-                              team
-                            }
-                            value={
-                              team
-                            }
-                          >
-                            {team}
-                          </option>
-                        )
-                      )}
-
-                    </select>
-
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="min-h-12 rounded-xl bg-cyan-500 px-6 py-3 font-black text-slate-950 transition hover:bg-cyan-400"
-                  >
-                    Show Team
-                  </button>
-
-                  {validSelectedTeam && (
-                    <a
-                      href={
-                        selectedWeek
-                          ? `/history?week=${selectedWeek.week_number}`
-                          : '/history'
-                      }
-                      className="flex min-h-12 items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-5 py-3 font-bold text-white transition hover:bg-slate-700"
-                    >
-                      Show All Teams
-                    </a>
-                  )}
-
-                </form>
-
-              </div>
+                </div>
+              )}
 
               {/* SELECTED WEEK */}
 
@@ -1519,7 +1601,9 @@ export default async function HistoryPage({
 
                           <div className="text-xs text-slate-400">
                             {
-                              loggedInWeekRecord.player.name
+                              loggedInWeekRecord
+                                .player
+                                .name
                             }
                           </div>
 
@@ -1567,17 +1651,6 @@ export default async function HistoryPage({
                           validSelectedTeam
                         }.
                       </div>
-
-                      <a
-                        href={`/history?week=${selectedWeek.week_number}`}
-                        className="mt-5 inline-flex min-h-12 items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-5 py-3 font-bold text-white transition hover:bg-slate-700"
-                      >
-                        Show All Week{' '}
-                        {
-                          selectedWeek.week_number
-                        }{' '}
-                        Picks
-                      </a>
 
                     </div>
                   ) : (
