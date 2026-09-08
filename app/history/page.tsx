@@ -424,9 +424,6 @@ function PickCard({
         loggedInPlayerId
       )}`}
     >
-
-      {/* PICK HEADER */}
-
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
 
         <div className="text-sm font-black uppercase text-slate-200">
@@ -446,8 +443,6 @@ function PickCard({
         </div>
 
       </div>
-
-      {/* RESULT + KICKOFF */}
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
 
@@ -469,8 +464,6 @@ function PickCard({
 
       </div>
 
-      {/* FINAL SCORE */}
-
       <div className="mt-5">
 
         <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
@@ -480,8 +473,6 @@ function PickCard({
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-6">
-
-          {/* PICKED TEAM */}
 
           <div className="min-w-0">
 
@@ -496,8 +487,6 @@ function PickCard({
             </div>
 
           </div>
-
-          {/* OPPONENT */}
 
           <div className="min-w-0">
 
@@ -555,10 +544,6 @@ export default async function HistoryPage({
 
   const supabase =
     createAdminClient()
-
-  // --------------------------------------------------
-  // LOGGED-IN PLAYER
-  // --------------------------------------------------
 
   const {
     data:
@@ -620,10 +605,6 @@ export default async function HistoryPage({
         loggedInPlayerData.name,
     }
 
-  // --------------------------------------------------
-  // SEASON
-  // --------------------------------------------------
-
   const {
     data: season,
     error: seasonError,
@@ -679,10 +660,6 @@ export default async function HistoryPage({
     )
   }
 
-  // --------------------------------------------------
-  // PLAYERS
-  // --------------------------------------------------
-
   const {
     data: playersData,
     error: playersError,
@@ -719,10 +696,6 @@ export default async function HistoryPage({
           .toLowerCase() ===
         'general'
     ) ?? null
-
-  // --------------------------------------------------
-  // WEEKS
-  // --------------------------------------------------
 
   const {
     data: weeksData,
@@ -763,10 +736,6 @@ export default async function HistoryPage({
       (week) =>
         week.id
     )
-
-  // --------------------------------------------------
-  // PICKS
-  // --------------------------------------------------
 
   let picks: Pick[] = []
 
@@ -811,10 +780,6 @@ export default async function HistoryPage({
       (picksData ??
         []) as Pick[]
   }
-
-  // --------------------------------------------------
-  // GAMES
-  // --------------------------------------------------
 
   const gameIds =
     Array.from(
@@ -862,10 +827,6 @@ export default async function HistoryPage({
         []) as Game[]
   }
 
-  // --------------------------------------------------
-  // ADJUSTMENTS
-  // --------------------------------------------------
-
   let adjustments:
     Adjustment[] = []
 
@@ -910,10 +871,6 @@ export default async function HistoryPage({
       (adjustmentsData ??
         []) as Adjustment[]
   }
-
-  // --------------------------------------------------
-  // STANDINGS
-  // --------------------------------------------------
 
   const standings:
     Standing[] =
@@ -972,6 +929,13 @@ export default async function HistoryPage({
         ) ?? null
       : null
 
+  const loggedInStanding =
+    standings.find(
+      (standing) =>
+        standing.player.id ===
+        loggedInPlayer.id
+    ) ?? null
+
   const geoffSeasonWins =
     geoffStanding?.wins ??
     0
@@ -984,10 +948,6 @@ export default async function HistoryPage({
     STARTING_GENERAL_LEAD +
     generalSeasonWins -
     geoffSeasonWins
-
-  // --------------------------------------------------
-  // SELECTED WEEK
-  // --------------------------------------------------
 
   const latestWeek =
     weeks.length > 0
@@ -1030,10 +990,6 @@ export default async function HistoryPage({
             selectedWeek.id
         )
       : []
-
-  // --------------------------------------------------
-  // TEAM DROPDOWN
-  // --------------------------------------------------
 
   const selectedWeekGameIds =
     new Set(
@@ -1081,10 +1037,6 @@ export default async function HistoryPage({
       ? selectedTeam
       : ''
 
-  // --------------------------------------------------
-  // FILTER PICKS
-  // --------------------------------------------------
-
   const filteredWeekPicks =
     selectedWeekPicks.filter(
       (pick) =>
@@ -1124,6 +1076,13 @@ export default async function HistoryPage({
         )
       : []
 
+  const loggedInWeekRecord =
+    selectedWeekRecords.find(
+      (record) =>
+        record.player.id ===
+        loggedInPlayer.id
+    ) ?? null
+
   const automaticPicks =
     filteredWeekPicks
       .filter(
@@ -1160,9 +1119,17 @@ export default async function HistoryPage({
           b.pick_number
       )
 
-  // --------------------------------------------------
-  // PAGE
-  // --------------------------------------------------
+  const originalAutomaticPicks =
+    selectedWeekPicks
+      .filter(
+        (pick) =>
+          pick.is_automatic
+      )
+      .sort(
+        (a, b) =>
+          a.pick_number -
+          b.pick_number
+      )
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6">
@@ -1214,69 +1181,47 @@ export default async function HistoryPage({
             Season Standings
           </h2>
 
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2">
 
-            {[
-              geoffStanding,
-              generalStanding,
-            ]
-              .filter(
-                (
-                  standing
-                ): standing is Standing =>
-                  standing !==
-                  null
-              )
-              .map(
-                (
-                  standing
-                ) => (
-                  <div
-                    key={
-                      standing.player.id
-                    }
-                    className="rounded-2xl border border-slate-800 bg-slate-900 p-6"
-                  >
+            {loggedInStanding && (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
 
-                    <div className="text-2xl font-black">
-                      {
-                        standing.player.name
-                      }
-                    </div>
+                <div className="text-2xl font-black">
+                  {
+                    loggedInStanding.player.name
+                  }
+                </div>
 
-                    <div className="mt-1 text-sm text-slate-400">
-                      Head-to-Head Season Record
-                    </div>
+                <div className="mt-1 text-sm text-slate-400">
+                  Head-to-Head Season Record
+                </div>
 
-                    <div className="mt-5 text-4xl font-black">
-                      {
-                        standing.wins
-                      }
-                      -
-                      {
-                        standing.losses
-                      }
-                      -
-                      {
-                        standing.pushes
-                      }
-                    </div>
+                <div className="mt-5 text-4xl font-black">
+                  {
+                    loggedInStanding.wins
+                  }
+                  -
+                  {
+                    loggedInStanding.losses
+                  }
+                  -
+                  {
+                    loggedInStanding.pushes
+                  }
+                </div>
 
-                    <div className="mt-2 text-sm text-slate-400">
-                      {(
-                        standing.percentage *
-                        100
-                      ).toFixed(
-                        1
-                      )}
-                      % winning percentage
-                    </div>
+                <div className="mt-2 text-sm text-slate-400">
+                  {(
+                    loggedInStanding.percentage *
+                    100
+                  ).toFixed(
+                    1
+                  )}
+                  % winning percentage
+                </div>
 
-                  </div>
-                )
-              )}
-
-            {/* OVERALL */}
+              </div>
+            )}
 
             <div className="rounded-2xl border border-amber-700/60 bg-amber-950/30 p-6">
 
@@ -1513,18 +1458,12 @@ export default async function HistoryPage({
 
                 </form>
 
-                <div className="mt-3 text-xs text-slate-500">
-                  Select a school to show every picked matchup involving that team during this week.
-                </div>
-
               </div>
 
               {/* SELECTED WEEK */}
 
               {selectedWeek && (
                 <article className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
-
-                  {/* WEEK HEADER */}
 
                   <div className="border-b border-slate-800 p-5 sm:p-6">
 
@@ -1575,50 +1514,35 @@ export default async function HistoryPage({
 
                       </div>
 
-                      <div className="flex flex-wrap gap-3">
+                      {loggedInWeekRecord && (
+                        <div className="rounded-xl bg-slate-800 px-4 py-3 text-center">
 
-                        {selectedWeekRecords.map(
-                          (
-                            record
-                          ) => (
-                            <div
-                              key={
-                                record.player.id
-                              }
-                              className="rounded-xl bg-slate-800 px-4 py-3 text-center"
-                            >
+                          <div className="text-xs text-slate-400">
+                            {
+                              loggedInWeekRecord.player.name
+                            }
+                          </div>
 
-                              <div className="text-xs text-slate-400">
-                                {
-                                  record.player.name
-                                }
-                              </div>
+                          <div className="mt-1 font-black">
+                            {
+                              loggedInWeekRecord.wins
+                            }
+                            -
+                            {
+                              loggedInWeekRecord.losses
+                            }
+                            -
+                            {
+                              loggedInWeekRecord.pushes
+                            }
+                          </div>
 
-                              <div className="mt-1 font-black">
-                                {
-                                  record.wins
-                                }
-                                -
-                                {
-                                  record.losses
-                                }
-                                -
-                                {
-                                  record.pushes
-                                }
-                              </div>
-
-                            </div>
-                          )
-                        )}
-
-                      </div>
+                        </div>
+                      )}
 
                     </div>
 
                   </div>
-
-                  {/* RESULTS */}
 
                   {selectedWeekPicks.length ===
                   0 ? (
@@ -1689,23 +1613,6 @@ export default async function HistoryPage({
                                 ) {
                                   return null
                                 }
-
-                                const originalAutomaticPicks =
-                                  selectedWeekPicks
-                                    .filter(
-                                      (
-                                        item
-                                      ) =>
-                                        item.is_automatic
-                                    )
-                                    .sort(
-                                      (
-                                        a,
-                                        b
-                                      ) =>
-                                        a.pick_number -
-                                        b.pick_number
-                                    )
 
                                 const originalIndex =
                                   originalAutomaticPicks.findIndex(
