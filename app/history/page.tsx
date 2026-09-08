@@ -20,6 +20,7 @@ type Game = {
   id: string
   home_team: string
   away_team: string
+  start_time: string
   completed: boolean
   home_score: number | null
   away_score: number | null
@@ -59,9 +60,16 @@ type Standing = {
   percentage: number
 }
 
+type SearchParams = {
+  week?: string
+  team?: string
+}
+
 const STARTING_GENERAL_LEAD = 20
 
-function formatSpread(spread: number) {
+function formatSpread(
+  spread: number
+) {
   if (spread > 0) {
     return `+${spread}`
   }
@@ -73,7 +81,29 @@ function formatSpread(spread: number) {
   return `${spread}`
 }
 
-function resultBadgeClasses(result: string) {
+function formatGameDateTime(
+  isoDate: string
+) {
+  return new Intl.DateTimeFormat(
+    'en-US',
+    {
+      timeZone:
+        'America/New_York',
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    }
+  ).format(
+    new Date(isoDate)
+  )
+}
+
+function resultBadgeClasses(
+  result: string
+) {
   if (result === 'win') {
     return 'border border-emerald-700 bg-emerald-950 text-emerald-300'
   }
@@ -105,10 +135,14 @@ function perspectiveCardClasses(
     loggedInPlayerId
 
   const goodForMe =
-    (isMyPick &&
-      pick.result === 'win') ||
-    (!isMyPick &&
-      pick.result === 'loss')
+    (
+      isMyPick &&
+      pick.result === 'win'
+    ) ||
+    (
+      !isMyPick &&
+      pick.result === 'loss'
+    )
 
   if (goodForMe) {
     return 'border-emerald-600 bg-emerald-950/35'
@@ -180,6 +214,56 @@ function getScoreForTeam(
   }
 
   return null
+}
+
+function pickMatchesSearch(
+  pick: Pick,
+  games: Game[],
+  searchTerm: string
+) {
+  if (!searchTerm) {
+    return true
+  }
+
+  const normalizedSearch =
+    searchTerm
+      .trim()
+      .toLowerCase()
+
+  if (!normalizedSearch) {
+    return true
+  }
+
+  const game =
+    getGameForPick(
+      pick,
+      games
+    )
+
+  const opponentTeam =
+    getOpponentTeam(
+      pick,
+      game
+    )
+
+  const pickedTeamMatches =
+    pick.team
+      .toLowerCase()
+      .includes(
+        normalizedSearch
+      )
+
+  const opponentMatches =
+    opponentTeam
+      ?.toLowerCase()
+      .includes(
+        normalizedSearch
+      ) ?? false
+
+  return (
+    pickedTeamMatches ||
+    opponentMatches
+  )
 }
 
 function calculateHeadToHeadRecord(
@@ -388,7 +472,7 @@ function PickCard({
 
       {/* RESULT */}
 
-      <div className="mt-2">
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
 
         <span
           className={`inline-flex rounded-full px-3 py-1 text-xs font-black uppercase ${resultBadgeClasses(
@@ -397,6 +481,14 @@ function PickCard({
         >
           {pick.result}
         </span>
+
+        {game?.start_time && (
+          <div className="text-right text-xs font-bold text-slate-400 sm:text-sm">
+            {formatGameDateTime(
+              game.start_time
+            )}
+          </div>
+        )}
 
       </div>
 
@@ -453,7 +545,25 @@ function PickCard({
   )
 }
 
-export default async function HistoryPage() {
+export default async function HistoryPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>
+}) {
+  const params =
+    await searchParams
+
+  const requestedWeekNumber =
+    Number(
+      params.week
+    )
+
+  const searchTerm =
+    typeof params.team ===
+    'string'
+      ? params.team.trim()
+      : ''
+
   const authSupabase =
     await createClient()
 
@@ -468,6 +578,10 @@ export default async function HistoryPage() {
 
   const supabase =
     createAdminClient()
+
+  // --------------------------------------------------
+  // LOGGED-IN PLAYER
+  // --------------------------------------------------
 
   const {
     data:
@@ -750,6 +864,7 @@ export default async function HistoryPage() {
         id,
         home_team,
         away_team,
+        start_time,
         completed,
         home_score,
         away_score
@@ -847,12 +962,16 @@ export default async function HistoryPage() {
 
         return {
           player,
+
           wins:
             record.wins,
+
           losses:
             record.losses,
+
           pushes:
             record.pushes,
+
           percentage,
         }
       }
@@ -888,6 +1007,115 @@ export default async function HistoryPage() {
     STARTING_GENERAL_LEAD +
     generalSeasonWins -
     geoffSeasonWins
+
+  // --------------------------------------------------
+  // SELECTED WEEK
+  // --------------------------------------------------
+
+  const latestWeek =
+    weeks.length > 0
+      ? weeks[
+          weeks.length - 1
+        ]
+      : null
+
+  const requestedWeek =
+    Number.isFinite(
+      requestedWeekNumber
+    )
+      ? weeks.find(
+          (week) =>
+            week.week_number ===
+            requestedWeekNumber
+        ) ?? null
+      : null
+
+  const selectedWeek =
+    requestedWeek ??
+    latestWeek
+
+  const selectedWeekPicks =
+    selectedWeek
+      ? picks.filter(
+          (pick) =>
+            pick.week_id ===
+            selectedWeek.id
+        )
+      : []
+
+  const selectedWeekAdjustments =
+    selectedWeek
+      ? adjustments.filter(
+          (
+            adjustment
+          ) =>
+            adjustment.week_id ===
+            selectedWeek.id
+        )
+      : []
+
+  const filteredWeekPicks =
+    selectedWeekPicks.filter(
+      (pick) =>
+        pickMatchesSearch(
+          pick,
+          games,
+          searchTerm
+        )
+    )
+
+  const firstPicker =
+    selectedWeek
+      ? players.find(
+          (player) =>
+            player.id ===
+            selectedWeek.first_picker_id
+        ) ?? null
+      : null
+
+  const selectedWeekRecords =
+    selectedWeek
+      ? players.map(
+          (player) => {
+            const record =
+              calculateHeadToHeadRecord(
+                player.id,
+                players,
+                selectedWeekPicks,
+                selectedWeekAdjustments
+              )
+
+            return {
+              player,
+              ...record,
+            }
+          }
+        )
+      : []
+
+  const automaticPicks =
+    filteredWeekPicks
+      .filter(
+        (pick) =>
+          pick.is_automatic
+      )
+      .sort(
+        (a, b) =>
+          a.pick_number -
+          b.pick_number
+      )
+
+  const normalPicks =
+    filteredWeekPicks
+      .filter(
+        (pick) =>
+          !pick.is_automatic
+      )
+      .sort(
+        (a, b) =>
+          a.pick_number -
+          b.pick_number
+      )
 
   // --------------------------------------------------
   // PAGE
@@ -1066,24 +1294,33 @@ export default async function HistoryPage() {
             </div>
 
             <div className="flex items-center gap-2">
+
               <span className="h-3 w-3 rounded-full bg-emerald-500" />
+
               <span className="text-slate-400">
                 Good for you
               </span>
+
             </div>
 
             <div className="flex items-center gap-2">
+
               <span className="h-3 w-3 rounded-full bg-red-500" />
+
               <span className="text-slate-400">
                 Bad for you
               </span>
+
             </div>
 
             <div className="flex items-center gap-2">
+
               <span className="h-3 w-3 rounded-full bg-slate-600" />
+
               <span className="text-slate-400">
                 Pending / Push
               </span>
+
             </div>
 
           </div>
@@ -1104,319 +1341,417 @@ export default async function HistoryPage() {
               No weeks have been created yet.
             </div>
           ) : (
-            <div className="space-y-6">
+            <>
+              {/* WEEK TABS */}
 
-              {[...weeks]
-                .reverse()
-                .map(
-                  (week) => {
-                    const weekPicks =
-                      picks.filter(
-                        (pick) =>
-                          pick.week_id ===
-                          week.id
-                      )
+              <div className="mb-4 overflow-x-auto pb-2">
 
-                    const weekAdjustments =
-                      adjustments.filter(
-                        (
-                          adjustment
-                        ) =>
-                          adjustment.week_id ===
-                          week.id
-                      )
+                <div className="flex min-w-max gap-2">
 
-                    const firstPicker =
-                      players.find(
-                        (player) =>
-                          player.id ===
-                          week.first_picker_id
-                      )
+                  {weeks.map(
+                    (week) => {
+                      const isSelected =
+                        selectedWeek?.id ===
+                        week.id
 
-                    const weekRecords =
-                      players.map(
-                        (player) => {
-                          const record =
-                            calculateHeadToHeadRecord(
-                              player.id,
-                              players,
-                              weekPicks,
-                              weekAdjustments
-                            )
+                      const searchPart =
+                        searchTerm
+                          ? `&team=${encodeURIComponent(
+                              searchTerm
+                            )}`
+                          : ''
 
-                          return {
-                            player,
-                            ...record,
+                      return (
+                        <a
+                          key={
+                            week.id
                           }
-                        }
+                          href={`/history?week=${week.week_number}${searchPart}`}
+                          className={`rounded-xl border px-5 py-3 text-sm font-black transition ${
+                            isSelected
+                              ? 'border-cyan-500 bg-cyan-950/60 text-cyan-300'
+                              : 'border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800'
+                          }`}
+                        >
+                          Week{' '}
+                          {
+                            week.week_number
+                          }
+                        </a>
                       )
+                    }
+                  )}
 
-                    const automaticPicks =
-                      [...weekPicks]
-                        .filter(
-                          (pick) =>
-                            pick.is_automatic
-                        )
-                        .sort(
+                </div>
+
+              </div>
+
+              {/* TEAM SEARCH */}
+
+              <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-4 sm:p-5">
+
+                <form
+                  method="get"
+                  action="/history"
+                  className="flex flex-col gap-3 sm:flex-row sm:items-end"
+                >
+
+                  {selectedWeek && (
+                    <input
+                      type="hidden"
+                      name="week"
+                      value={
+                        selectedWeek.week_number
+                      }
+                    />
+                  )}
+
+                  <div className="min-w-0 flex-1">
+
+                    <label
+                      htmlFor="history-team-search"
+                      className="mb-2 block text-sm font-black text-slate-200"
+                    >
+                      Find a Team
+                    </label>
+
+                    <input
+                      id="history-team-search"
+                      type="search"
+                      name="team"
+                      defaultValue={
+                        searchTerm
+                      }
+                      placeholder="Search TCU, USC, Penn State..."
+                      className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-base font-bold text-slate-950 placeholder:text-slate-500"
+                    />
+
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="min-h-12 rounded-xl bg-cyan-500 px-6 py-3 font-black text-slate-950 transition hover:bg-cyan-400"
+                  >
+                    Search
+                  </button>
+
+                  {searchTerm && (
+                    <a
+                      href={
+                        selectedWeek
+                          ? `/history?week=${selectedWeek.week_number}`
+                          : '/history'
+                      }
+                      className="flex min-h-12 items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-5 py-3 font-bold text-white transition hover:bg-slate-700"
+                    >
+                      Clear
+                    </a>
+                  )}
+
+                </form>
+
+                <div className="mt-3 text-xs text-slate-500">
+                  Searches both the selected team and its opponent within the selected week.
+                </div>
+
+              </div>
+
+              {/* SELECTED WEEK */}
+
+              {selectedWeek && (
+                <article className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
+
+                  {/* WEEK HEADER */}
+
+                  <div className="border-b border-slate-800 p-5 sm:p-6">
+
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+
+                      <div>
+
+                        <div className="flex items-center gap-3">
+
+                          <h3 className="text-2xl font-black">
+                            Week{' '}
+                            {
+                              selectedWeek.week_number
+                            }
+                          </h3>
+
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-black uppercase ${
+                              selectedWeek.status ===
+                              'complete'
+                                ? 'bg-emerald-950 text-emerald-400'
+                                : 'bg-cyan-950 text-cyan-400'
+                            }`}
+                          >
+                            {
+                              selectedWeek.status
+                            }
+                          </span>
+
+                        </div>
+
+                        <p className="mt-2 text-sm text-slate-400">
+                          First normal pick:{' '}
+                          <strong className="text-slate-200">
+                            {firstPicker?.name ??
+                              '—'}
+                          </strong>
+                        </p>
+
+                        {searchTerm && (
+                          <p className="mt-2 text-sm text-cyan-400">
+                            Showing matchups containing{' '}
+                            <strong>
+                              “{searchTerm}”
+                            </strong>
+                          </p>
+                        )}
+
+                      </div>
+
+                      <div className="flex flex-wrap gap-3">
+
+                        {selectedWeekRecords.map(
                           (
-                            a,
-                            b
-                          ) =>
-                            a.pick_number -
-                            b.pick_number
-                        )
+                            record
+                          ) => (
+                            <div
+                              key={
+                                record.player.id
+                              }
+                              className="rounded-xl bg-slate-800 px-4 py-3 text-center"
+                            >
 
-                    const normalPicks =
-                      [...weekPicks]
-                        .filter(
-                          (pick) =>
-                            !pick.is_automatic
-                        )
-                        .sort(
-                          (
-                            a,
-                            b
-                          ) =>
-                            a.pick_number -
-                            b.pick_number
-                        )
-
-                    return (
-                      <article
-                        key={
-                          week.id
-                        }
-                        className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900"
-                      >
-
-                        {/* WEEK HEADER */}
-
-                        <div className="border-b border-slate-800 p-5 sm:p-6">
-
-                          <div className="flex flex-wrap items-start justify-between gap-4">
-
-                            <div>
-
-                              <div className="flex items-center gap-3">
-
-                                <h3 className="text-2xl font-black">
-                                  Week{' '}
-                                  {
-                                    week.week_number
-                                  }
-                                </h3>
-
-                                <span
-                                  className={`rounded-full px-3 py-1 text-xs font-black uppercase ${
-                                    week.status ===
-                                    'complete'
-                                      ? 'bg-emerald-950 text-emerald-400'
-                                      : 'bg-cyan-950 text-cyan-400'
-                                  }`}
-                                >
-                                  {
-                                    week.status
-                                  }
-                                </span>
-
+                              <div className="text-xs text-slate-400">
+                                {
+                                  record.player.name
+                                }
                               </div>
 
-                              <p className="mt-2 text-sm text-slate-400">
-                                First normal pick:{' '}
-                                <strong className="text-slate-200">
-                                  {firstPicker?.name ??
-                                    '—'}
-                                </strong>
-                              </p>
+                              <div className="mt-1 font-black">
+                                {
+                                  record.wins
+                                }
+                                -
+                                {
+                                  record.losses
+                                }
+                                -
+                                {
+                                  record.pushes
+                                }
+                              </div>
 
                             </div>
+                          )
+                        )}
 
-                            <div className="flex flex-wrap gap-3">
+                      </div>
 
-                              {weekRecords.map(
-                                (
-                                  record
-                                ) => (
-                                  <div
+                    </div>
+
+                  </div>
+
+                  {/* NO PICKS */}
+
+                  {selectedWeekPicks.length ===
+                  0 ? (
+                    <div className="p-6 text-slate-500">
+                      No picks recorded for this week.
+                    </div>
+                  ) : filteredWeekPicks.length ===
+                    0 ? (
+                    <div className="p-8 text-center">
+
+                      <div className="text-lg font-black text-white">
+                        No matching picks found.
+                      </div>
+
+                      <div className="mt-2 text-sm text-slate-500">
+                        No Week{' '}
+                        {
+                          selectedWeek.week_number
+                        }{' '}
+                        matchup contains “
+                        {searchTerm}”.
+                      </div>
+
+                      <a
+                        href={`/history?week=${selectedWeek.week_number}`}
+                        className="mt-5 inline-flex min-h-12 items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-5 py-3 font-bold text-white transition hover:bg-slate-700"
+                      >
+                        Show All Week{' '}
+                        {
+                          selectedWeek.week_number
+                        }{' '}
+                        Picks
+                      </a>
+
+                    </div>
+                  ) : (
+                    <div className="space-y-7 p-4 sm:p-6">
+
+                      {/* AUTOMATIC PICKS */}
+
+                      {automaticPicks.length >
+                        0 && (
+                        <div>
+
+                          <div className="mb-3 text-sm font-black text-cyan-400">
+                            Automatic Picks
+                          </div>
+
+                          <div className="space-y-4">
+
+                            {automaticPicks.map(
+                              (
+                                pick,
+                                index
+                              ) => {
+                                const player =
+                                  players.find(
+                                    (
+                                      item
+                                    ) =>
+                                      item.id ===
+                                      pick.player_id
+                                  )
+
+                                if (
+                                  !player
+                                ) {
+                                  return null
+                                }
+
+                                return (
+                                  <PickCard
                                     key={
-                                      record.player.id
+                                      pick.id
                                     }
-                                    className="rounded-xl bg-slate-800 px-4 py-3 text-center"
-                                  >
-
-                                    <div className="text-xs text-slate-400">
-                                      {
-                                        record.player.name
-                                      }
-                                    </div>
-
-                                    <div className="mt-1 font-black">
-                                      {
-                                        record.wins
-                                      }
-                                      -
-                                      {
-                                        record.losses
-                                      }
-                                      -
-                                      {
-                                        record.pushes
-                                      }
-                                    </div>
-
-                                  </div>
+                                    player={
+                                      player
+                                    }
+                                    pick={
+                                      pick
+                                    }
+                                    games={
+                                      games
+                                    }
+                                    loggedInPlayerId={
+                                      loggedInPlayer.id
+                                    }
+                                    displayNumber={
+                                      index +
+                                      1
+                                    }
+                                  />
                                 )
-                              )}
-
-                            </div>
+                              }
+                            )}
 
                           </div>
 
                         </div>
+                      )}
 
-                        {weekPicks.length ===
-                        0 ? (
-                          <div className="p-6 text-slate-500">
-                            No picks recorded for this week.
+                      {/* NORMAL PICKS */}
+
+                      {normalPicks.length >
+                        0 && (
+                        <div>
+
+                          <div className="mb-3 text-lg font-black text-white">
+                            Picks
                           </div>
-                        ) : (
-                          <div className="space-y-7 p-4 sm:p-6">
 
-                            {/* AUTOMATIC PICKS */}
+                          <div className="space-y-5">
 
-                            {automaticPicks.length >
-                              0 && (
-                              <div>
-
-                                <div className="mb-3 text-sm font-black text-cyan-400">
-                                  Automatic Picks
-                                </div>
-
-                                <div className="space-y-4">
-
-                                  {automaticPicks.map(
+                            {normalPicks.map(
+                              (
+                                pick
+                              ) => {
+                                const player =
+                                  players.find(
                                     (
-                                      pick,
-                                      index
-                                    ) => {
-                                      const player =
-                                        players.find(
-                                          (
-                                            item
-                                          ) =>
-                                            item.id ===
-                                            pick.player_id
-                                        )
+                                      item
+                                    ) =>
+                                      item.id ===
+                                      pick.player_id
+                                  )
 
-                                      if (
-                                        !player
-                                      ) {
-                                        return null
-                                      }
+                                if (
+                                  !player
+                                ) {
+                                  return null
+                                }
 
-                                      return (
-                                        <PickCard
-                                          key={
-                                            pick.id
-                                          }
-                                          player={
-                                            player
-                                          }
-                                          pick={
-                                            pick
-                                          }
-                                          games={
-                                            games
-                                          }
-                                          loggedInPlayerId={
-                                            loggedInPlayer.id
-                                          }
-                                          displayNumber={
-                                            index +
-                                            1
-                                          }
-                                        />
-                                      )
-                                    }
-                                  )}
+                                const originalNormalPicks =
+                                  selectedWeekPicks
+                                    .filter(
+                                      (
+                                        item
+                                      ) =>
+                                        !item.is_automatic
+                                    )
+                                    .sort(
+                                      (
+                                        a,
+                                        b
+                                      ) =>
+                                        a.pick_number -
+                                        b.pick_number
+                                    )
 
-                                </div>
-
-                              </div>
-                            )}
-
-                            {/* PICKS */}
-
-                            {normalPicks.length >
-                              0 && (
-                              <div>
-
-                                <div className="mb-3 text-lg font-black text-white">
-                                  Picks
-                                </div>
-
-                                <div className="space-y-5">
-
-                                  {normalPicks.map(
+                                const originalIndex =
+                                  originalNormalPicks.findIndex(
                                     (
-                                      pick,
-                                      index
-                                    ) => {
-                                      const player =
-                                        players.find(
-                                          (
-                                            item
-                                          ) =>
-                                            item.id ===
-                                            pick.player_id
-                                        )
+                                      item
+                                    ) =>
+                                      item.id ===
+                                      pick.id
+                                  )
 
-                                      if (
-                                        !player
-                                      ) {
-                                        return null
-                                      }
-
-                                      return (
-                                        <PickCard
-                                          key={
-                                            pick.id
-                                          }
-                                          player={
-                                            player
-                                          }
-                                          pick={
-                                            pick
-                                          }
-                                          games={
-                                            games
-                                          }
-                                          loggedInPlayerId={
-                                            loggedInPlayer.id
-                                          }
-                                          displayNumber={
-                                            index +
-                                            1
-                                          }
-                                        />
-                                      )
+                                return (
+                                  <PickCard
+                                    key={
+                                      pick.id
                                     }
-                                  )}
-
-                                </div>
-
-                              </div>
+                                    player={
+                                      player
+                                    }
+                                    pick={
+                                      pick
+                                    }
+                                    games={
+                                      games
+                                    }
+                                    loggedInPlayerId={
+                                      loggedInPlayer.id
+                                    }
+                                    displayNumber={
+                                      originalIndex +
+                                      1
+                                    }
+                                  />
+                                )
+                              }
                             )}
 
                           </div>
-                        )}
 
-                      </article>
-                    )
-                  }
-                )}
+                        </div>
+                      )}
 
-            </div>
+                    </div>
+                  )}
+
+                </article>
+              )}
+
+            </>
           )}
 
         </section>
