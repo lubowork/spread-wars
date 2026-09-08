@@ -216,21 +216,12 @@ function getScoreForTeam(
   return null
 }
 
-function pickMatchesSearch(
+function pickMatchesTeam(
   pick: Pick,
   games: Game[],
-  searchTerm: string
+  selectedTeam: string
 ) {
-  if (!searchTerm) {
-    return true
-  }
-
-  const normalizedSearch =
-    searchTerm
-      .trim()
-      .toLowerCase()
-
-  if (!normalizedSearch) {
+  if (!selectedTeam) {
     return true
   }
 
@@ -240,29 +231,15 @@ function pickMatchesSearch(
       games
     )
 
-  const opponentTeam =
-    getOpponentTeam(
-      pick,
-      game
-    )
-
-  const pickedTeamMatches =
-    pick.team
-      .toLowerCase()
-      .includes(
-        normalizedSearch
-      )
-
-  const opponentMatches =
-    opponentTeam
-      ?.toLowerCase()
-      .includes(
-        normalizedSearch
-      ) ?? false
+  if (!game) {
+    return false
+  }
 
   return (
-    pickedTeamMatches ||
-    opponentMatches
+    game.home_team ===
+      selectedTeam ||
+    game.away_team ===
+      selectedTeam
   )
 }
 
@@ -470,7 +447,7 @@ function PickCard({
 
       </div>
 
-      {/* RESULT */}
+      {/* RESULT + KICKOFF */}
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
 
@@ -558,10 +535,10 @@ export default async function HistoryPage({
       params.week
     )
 
-  const searchTerm =
+  const selectedTeam =
     typeof params.team ===
     'string'
-      ? params.team.trim()
+      ? params.team
       : ''
 
   const authSupabase =
@@ -1054,13 +1031,67 @@ export default async function HistoryPage({
         )
       : []
 
+  // --------------------------------------------------
+  // TEAM DROPDOWN
+  // --------------------------------------------------
+
+  const selectedWeekGameIds =
+    new Set(
+      selectedWeekPicks.map(
+        (pick) =>
+          pick.game_id
+      )
+    )
+
+  const selectedWeekGames =
+    games.filter(
+      (game) =>
+        selectedWeekGameIds.has(
+          game.id
+        )
+    )
+
+  const availableTeams =
+    Array.from(
+      new Set(
+        selectedWeekGames.flatMap(
+          (game) => [
+            game.away_team,
+            game.home_team,
+          ]
+        )
+      )
+    ).sort(
+      (a, b) =>
+        a.localeCompare(
+          b,
+          'en',
+          {
+            sensitivity:
+              'base',
+          }
+        )
+    )
+
+  const validSelectedTeam =
+    selectedTeam &&
+    availableTeams.includes(
+      selectedTeam
+    )
+      ? selectedTeam
+      : ''
+
+  // --------------------------------------------------
+  // FILTER PICKS
+  // --------------------------------------------------
+
   const filteredWeekPicks =
     selectedWeekPicks.filter(
       (pick) =>
-        pickMatchesSearch(
+        pickMatchesTeam(
           pick,
           games,
-          searchTerm
+          validSelectedTeam
         )
     )
 
@@ -1107,6 +1138,18 @@ export default async function HistoryPage({
 
   const normalPicks =
     filteredWeekPicks
+      .filter(
+        (pick) =>
+          !pick.is_automatic
+      )
+      .sort(
+        (a, b) =>
+          a.pick_number -
+          b.pick_number
+      )
+
+  const originalNormalPicks =
+    selectedWeekPicks
       .filter(
         (pick) =>
           !pick.is_automatic
@@ -1342,6 +1385,7 @@ export default async function HistoryPage({
             </div>
           ) : (
             <>
+
               {/* WEEK TABS */}
 
               <div className="mb-4 overflow-x-auto pb-2">
@@ -1354,10 +1398,10 @@ export default async function HistoryPage({
                         selectedWeek?.id ===
                         week.id
 
-                      const searchPart =
-                        searchTerm
+                      const teamPart =
+                        validSelectedTeam
                           ? `&team=${encodeURIComponent(
-                              searchTerm
+                              validSelectedTeam
                             )}`
                           : ''
 
@@ -1366,7 +1410,7 @@ export default async function HistoryPage({
                           key={
                             week.id
                           }
-                          href={`/history?week=${week.week_number}${searchPart}`}
+                          href={`/history?week=${week.week_number}${teamPart}`}
                           className={`rounded-xl border px-5 py-3 text-sm font-black transition ${
                             isSelected
                               ? 'border-cyan-500 bg-cyan-950/60 text-cyan-300'
@@ -1386,7 +1430,7 @@ export default async function HistoryPage({
 
               </div>
 
-              {/* TEAM SEARCH */}
+              {/* TEAM DROPDOWN */}
 
               <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-4 sm:p-5">
 
@@ -1409,22 +1453,41 @@ export default async function HistoryPage({
                   <div className="min-w-0 flex-1">
 
                     <label
-                      htmlFor="history-team-search"
+                      htmlFor="history-team-filter"
                       className="mb-2 block text-sm font-black text-slate-200"
                     >
                       Find a Team
                     </label>
 
-                    <input
-                      id="history-team-search"
-                      type="search"
+                    <select
+                      id="history-team-filter"
                       name="team"
                       defaultValue={
-                        searchTerm
+                        validSelectedTeam
                       }
-                      placeholder="Search TCU, USC, Penn State..."
-                      className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-base font-bold text-slate-950 placeholder:text-slate-500"
-                    />
+                      className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-base font-bold text-slate-950"
+                    >
+
+                      <option value="">
+                        All Teams
+                      </option>
+
+                      {availableTeams.map(
+                        (team) => (
+                          <option
+                            key={
+                              team
+                            }
+                            value={
+                              team
+                            }
+                          >
+                            {team}
+                          </option>
+                        )
+                      )}
+
+                    </select>
 
                   </div>
 
@@ -1432,10 +1495,10 @@ export default async function HistoryPage({
                     type="submit"
                     className="min-h-12 rounded-xl bg-cyan-500 px-6 py-3 font-black text-slate-950 transition hover:bg-cyan-400"
                   >
-                    Search
+                    Show Team
                   </button>
 
-                  {searchTerm && (
+                  {validSelectedTeam && (
                     <a
                       href={
                         selectedWeek
@@ -1444,14 +1507,14 @@ export default async function HistoryPage({
                       }
                       className="flex min-h-12 items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-5 py-3 font-bold text-white transition hover:bg-slate-700"
                     >
-                      Clear
+                      Show All Teams
                     </a>
                   )}
 
                 </form>
 
                 <div className="mt-3 text-xs text-slate-500">
-                  Searches both the selected team and its opponent within the selected week.
+                  Select a school to show every picked matchup involving that team during this week.
                 </div>
 
               </div>
@@ -1501,12 +1564,12 @@ export default async function HistoryPage({
                           </strong>
                         </p>
 
-                        {searchTerm && (
-                          <p className="mt-2 text-sm text-cyan-400">
-                            Showing matchups containing{' '}
-                            <strong>
-                              “{searchTerm}”
-                            </strong>
+                        {validSelectedTeam && (
+                          <p className="mt-2 text-sm font-bold text-cyan-400">
+                            Showing{' '}
+                            {
+                              validSelectedTeam
+                            }
                           </p>
                         )}
 
@@ -1555,7 +1618,7 @@ export default async function HistoryPage({
 
                   </div>
 
-                  {/* NO PICKS */}
+                  {/* RESULTS */}
 
                   {selectedWeekPicks.length ===
                   0 ? (
@@ -1575,8 +1638,10 @@ export default async function HistoryPage({
                         {
                           selectedWeek.week_number
                         }{' '}
-                        matchup contains “
-                        {searchTerm}”.
+                        matchup involved{' '}
+                        {
+                          validSelectedTeam
+                        }.
                       </div>
 
                       <a
@@ -1608,8 +1673,7 @@ export default async function HistoryPage({
 
                             {automaticPicks.map(
                               (
-                                pick,
-                                index
+                                pick
                               ) => {
                                 const player =
                                   players.find(
@@ -1625,6 +1689,32 @@ export default async function HistoryPage({
                                 ) {
                                   return null
                                 }
+
+                                const originalAutomaticPicks =
+                                  selectedWeekPicks
+                                    .filter(
+                                      (
+                                        item
+                                      ) =>
+                                        item.is_automatic
+                                    )
+                                    .sort(
+                                      (
+                                        a,
+                                        b
+                                      ) =>
+                                        a.pick_number -
+                                        b.pick_number
+                                    )
+
+                                const originalIndex =
+                                  originalAutomaticPicks.findIndex(
+                                    (
+                                      item
+                                    ) =>
+                                      item.id ===
+                                      pick.id
+                                  )
 
                                 return (
                                   <PickCard
@@ -1644,7 +1734,7 @@ export default async function HistoryPage({
                                       loggedInPlayer.id
                                     }
                                     displayNumber={
-                                      index +
+                                      originalIndex +
                                       1
                                     }
                                   />
@@ -1687,23 +1777,6 @@ export default async function HistoryPage({
                                 ) {
                                   return null
                                 }
-
-                                const originalNormalPicks =
-                                  selectedWeekPicks
-                                    .filter(
-                                      (
-                                        item
-                                      ) =>
-                                        !item.is_automatic
-                                    )
-                                    .sort(
-                                      (
-                                        a,
-                                        b
-                                      ) =>
-                                        a.pick_number -
-                                        b.pick_number
-                                    )
 
                                 const originalIndex =
                                   originalNormalPicks.findIndex(
