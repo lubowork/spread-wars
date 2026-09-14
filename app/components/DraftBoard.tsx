@@ -192,16 +192,16 @@ function getOddsSyncIntervalMinutes(
   if (
     hoursUntilKickoff > 6
   ) {
-    return 60
+    return 2 * 60
   }
 
   if (
     hoursUntilKickoff > 3
   ) {
-    return 30
+    return 60
   }
 
-  return 15
+  return 30
 }
 
 function roundUpToNextCronSlot(
@@ -273,17 +273,9 @@ export default function DraftBoard({
       null
     )
 
-  // --------------------------------------------------
-  // KEEP LOCAL PICKS IN SYNC WITH SERVER PROPS
-  // --------------------------------------------------
-
   useEffect(() => {
     setCurrentPicks(picks)
   }, [picks])
-
-  // --------------------------------------------------
-  // AUTOMATIC PHONE REFRESH
-  // --------------------------------------------------
 
   useEffect(() => {
     let checking = false
@@ -394,10 +386,6 @@ export default function DraftBoard({
     currentPicks.length,
   ])
 
-  // --------------------------------------------------
-  // AUTOMATIC + NORMAL PICKS
-  // --------------------------------------------------
-
   const automaticPicks =
     currentPicks.filter(
       (pick) =>
@@ -409,10 +397,6 @@ export default function DraftBoard({
       (pick) =>
         !pick.is_automatic
     )
-
-  // --------------------------------------------------
-  // DRAFT ORDER
-  // --------------------------------------------------
 
   const firstPicker =
     players.find(
@@ -440,10 +424,6 @@ export default function DraftBoard({
     currentPlayer?.id ===
     loggedInPlayerId
 
-  // --------------------------------------------------
-  // FIRST-GAME-DAY RULE
-  // --------------------------------------------------
-
   const dayEligibleGames =
     allowLaterDayGames ||
     !firstGameDayKey
@@ -459,10 +439,6 @@ export default function DraftBoard({
   const laterDayGameCount =
     games.length -
     dayEligibleGames.length
-
-  // --------------------------------------------------
-  // REMOVE GAMES ALREADY PICKED
-  // --------------------------------------------------
 
   const pickedGameIds =
     new Set(
@@ -516,9 +492,18 @@ export default function DraftBoard({
   // --------------------------------------------------
   // NEXT ODDS SYNC
   //
-  // Use the same smart timing tiers as the sync route.
-  // Supabase checks every 15 minutes, so round the
-  // expected sync forward to the next cron slot.
+  // Mirrors app/api/sync/route.ts:
+  //
+  // >72h   = 12h
+  // 48-72h = 8h
+  // 24-48h = 4h
+  // 12-24h = 2h
+  // 6-12h  = 2h
+  // 3-6h   = 1h
+  // <=3h   = 30m
+  //
+  // Supabase cron checks every 15 minutes, so round
+  // forward to the next cron slot.
   // --------------------------------------------------
 
   const nextUpcomingGame =
@@ -559,7 +544,11 @@ export default function DraftBoard({
         ).getTime() -
         lastSyncDate.getTime()
       ) /
-      (1000 * 60 * 60)
+      (
+        1000 *
+        60 *
+        60
+      )
 
     const intervalMinutes =
       getOddsSyncIntervalMinutes(
@@ -579,10 +568,6 @@ export default function DraftBoard({
         earliestNextSync
       )
   }
-
-  // --------------------------------------------------
-  // ALPHABETICAL TEAM DROPDOWN
-  // --------------------------------------------------
 
   const availableTeams =
     Array.from(
@@ -631,10 +616,6 @@ export default function DraftBoard({
         )
       : availableGames
 
-  // --------------------------------------------------
-  // GET LATEST SPREAD
-  // --------------------------------------------------
-
   function getSpread(
     game: Game,
     team: string
@@ -662,10 +643,6 @@ export default function DraftBoard({
     )
   }
 
-  // --------------------------------------------------
-  // FORMAT SPREAD
-  // --------------------------------------------------
-
   function formatSpread(
     spread: number
   ) {
@@ -675,10 +652,6 @@ export default function DraftBoard({
 
     return `${spread}`
   }
-
-  // --------------------------------------------------
-  // REQUEST PICK CONFIRMATION
-  // --------------------------------------------------
 
   function requestPick(
     game: Game,
@@ -740,10 +713,6 @@ export default function DraftBoard({
     })
   }
 
-  // --------------------------------------------------
-  // CANCEL PICK
-  // --------------------------------------------------
-
   function cancelPick() {
     if (submitting) {
       return
@@ -751,10 +720,6 @@ export default function DraftBoard({
 
     setPendingPick(null)
   }
-
-  // --------------------------------------------------
-  // CONFIRM + MAKE PICK
-  // --------------------------------------------------
 
   async function confirmPick() {
     if (
@@ -885,10 +850,6 @@ export default function DraftBoard({
     }
   }
 
-  // --------------------------------------------------
-  // PENDING PICK OPPONENT
-  // --------------------------------------------------
-
   let pendingOpponent =
     ''
 
@@ -914,14 +875,8 @@ export default function DraftBoard({
     }
   }
 
-  // --------------------------------------------------
-  // PAGE
-  // --------------------------------------------------
-
   return (
     <section className="space-y-6 lg:col-span-2">
-
-      {/* PICK CONFIRMATION MODAL */}
 
       {pendingPick && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
@@ -1018,8 +973,6 @@ export default function DraftBoard({
         </div>
       )}
 
-      {/* CURRENT TURN */}
-
       <div
         className={`rounded-2xl border p-6 ${
           isMyTurn
@@ -1090,8 +1043,6 @@ export default function DraftBoard({
 
       </div>
 
-      {/* FIRST GAME DAY STATUS */}
-
       {!allowLaterDayGames &&
         firstGameDayKey && (
           <div className="rounded-xl border border-amber-800/60 bg-amber-950/30 p-4">
@@ -1124,15 +1075,11 @@ export default function DraftBoard({
           </div>
         )}
 
-      {/* MESSAGE */}
-
       {message && (
         <div className="rounded-xl border border-slate-700 bg-slate-900 p-4 text-sm">
           {message}
         </div>
       )}
-
-      {/* TEAM FINDER */}
 
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
 
@@ -1208,8 +1155,6 @@ export default function DraftBoard({
         </p>
 
       </div>
-
-      {/* AVAILABLE GAMES */}
 
       <div>
 
@@ -1331,8 +1276,6 @@ export default function DraftBoard({
 
                     <div className="grid gap-3 md:grid-cols-2">
 
-                      {/* AWAY */}
-
                       <button
                         type="button"
                         disabled={
@@ -1376,8 +1319,6 @@ export default function DraftBoard({
                         </div>
 
                       </button>
-
-                      {/* HOME */}
 
                       <button
                         type="button"
@@ -1435,8 +1376,6 @@ export default function DraftBoard({
 
       </div>
 
-      {/* DRAFT HISTORY */}
-
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
 
         <h2 className="mb-5 text-2xl font-black">
@@ -1444,8 +1383,6 @@ export default function DraftBoard({
         </h2>
 
         <div className="space-y-3">
-
-          {/* AUTOMATIC PICKS */}
 
           {[...automaticPicks]
             .sort(
@@ -1517,8 +1454,6 @@ export default function DraftBoard({
                 )
               }
             )}
-
-          {/* NORMAL PICKS */}
 
           {[...normalPicks]
             .sort(

@@ -3,7 +3,8 @@ import { createClient } from '../../../lib/supabase-server'
 import { createAdminClient } from '../../../lib/supabase-admin'
 import { getCollegeFootballOdds } from '../../../lib/odds-api'
 
-const MONTHLY_ODDS_BUDGET = 200
+const MONTHLY_ODDS_BUDGET = 260
+const DAILY_ODDS_BUDGET = 12
 
 async function isAuthorized(
   request: Request
@@ -81,11 +82,60 @@ function getMonthStart() {
   )
 }
 
+function getEasternDateKey(
+  date: Date
+) {
+  const formatter =
+    new Intl.DateTimeFormat(
+      'en-US',
+      {
+        timeZone:
+          'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }
+    )
+
+  const parts =
+    formatter.formatToParts(
+      date
+    )
+
+  const year =
+    parts.find(
+      (part) =>
+        part.type === 'year'
+    )?.value
+
+  const month =
+    parts.find(
+      (part) =>
+        part.type === 'month'
+    )?.value
+
+  const day =
+    parts.find(
+      (part) =>
+        part.type === 'day'
+    )?.value
+
+  if (
+    !year ||
+    !month ||
+    !day
+  ) {
+    return ''
+  }
+
+  return `${year}-${month}-${day}`
+}
+
 function getRefreshIntervalMinutes(
   hoursUntilNextGame:
     number | null
 ) {
-  // No upcoming game stored yet.
+  // No upcoming game stored.
   // Check twice per day.
   if (
     hoursUntilNextGame ===
@@ -94,7 +144,7 @@ function getRefreshIntervalMinutes(
     return 12 * 60
   }
 
-  // More than 3 days away
+  // More than 72 hours away
   if (
     hoursUntilNextGame >
     72
@@ -102,7 +152,7 @@ function getRefreshIntervalMinutes(
     return 12 * 60
   }
 
-  // 2-3 days away
+  // 48-72 hours away
   if (
     hoursUntilNextGame >
     48
@@ -110,7 +160,7 @@ function getRefreshIntervalMinutes(
     return 8 * 60
   }
 
-  // 1-2 days away
+  // 24-48 hours away
   if (
     hoursUntilNextGame >
     24
@@ -131,7 +181,7 @@ function getRefreshIntervalMinutes(
     hoursUntilNextGame >
     6
   ) {
-    return 60
+    return 2 * 60
   }
 
   // 3-6 hours away
@@ -139,11 +189,11 @@ function getRefreshIntervalMinutes(
     hoursUntilNextGame >
     3
   ) {
-    return 30
+    return 60
   }
 
   // Within 3 hours
-  return 15
+  return 30
 }
 
 function formatReason(
@@ -245,7 +295,7 @@ export async function POST(
     }
 
     // --------------------------------------------------
-    // MONTHLY USAGE HISTORY
+    // MONTHLY ODDS USAGE
     // --------------------------------------------------
 
     const monthStart =
@@ -292,11 +342,8 @@ export async function POST(
     // --------------------------------------------------
     // MONTHLY BUDGET
     //
-    // Count successful AND failed paid requests because
-    // an API request may still consume quota even if it
-    // ultimately fails.
-    //
-    // This is intentionally conservative.
+    // Count successful, attempted and failed paid
+    // requests. This is deliberately conservative.
     // --------------------------------------------------
 
     const monthlyOddsCredits =
@@ -319,9 +366,89 @@ export async function POST(
       return NextResponse.json({
         success: true,
         skipped: true,
+
         reason:
           'Monthly Spread Wars odds budget reached. No Odds API credit used.',
+
         monthlyOddsCredits,
+
+        monthlyOddsBudget:
+          MONTHLY_ODDS_BUDGET,
+
+        dailyOddsBudget:
+          DAILY_ODDS_BUDGET,
+      })
+    }
+
+    // --------------------------------------------------
+    // DAILY ODDS BUDGET
+    //
+    // Prevent a busy college football slate from
+    // consuming dozens of credits in a single day.
+    //
+    // Day boundaries use America/New_York because that
+    // is the timezone used throughout Spread Wars.
+    // --------------------------------------------------
+
+    const now =
+      new Date()
+
+    const todayEastern =
+      getEasternDateKey(
+        now
+      )
+
+    const todaysOddsRows =
+      allOddsUsageRows.filter(
+        (row) => {
+          if (
+            !row.called_at
+          ) {
+            return false
+          }
+
+          return (
+            getEasternDateKey(
+              new Date(
+                row.called_at
+              )
+            ) ===
+            todayEastern
+          )
+        }
+      )
+
+    const dailyOddsCredits =
+      todaysOddsRows.reduce(
+        (
+          total,
+          row
+        ) =>
+          total +
+          Number(
+            row.credits ?? 0
+          ),
+        0
+      )
+
+    if (
+      dailyOddsCredits >=
+      DAILY_ODDS_BUDGET
+    ) {
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+
+        reason:
+          'Daily Spread Wars odds budget reached. No Odds API credit used.',
+
+        dailyOddsCredits,
+
+        dailyOddsBudget:
+          DAILY_ODDS_BUDGET,
+
+        monthlyOddsCredits,
+
         monthlyOddsBudget:
           MONTHLY_ODDS_BUDGET,
       })
@@ -330,9 +457,6 @@ export async function POST(
     // --------------------------------------------------
     // FIND NEXT UPCOMING STORED GAME
     // --------------------------------------------------
-
-    const now =
-      new Date()
 
     const {
       data: nextGame,
@@ -406,11 +530,10 @@ export async function POST(
     // --------------------------------------------------
     // LAST SUCCESSFUL ODDS SYNC
     //
-    // IMPORTANT:
-    // Failed attempts are intentionally ignored here.
+    // Failed attempts are ignored here.
     //
-    // A failed sync must NEVER make the app think the
-    // stored odds are fresh.
+    // A failed request should never make the stored
+    // odds appear fresh.
     // --------------------------------------------------
 
     const successfulOddsRows =
@@ -484,6 +607,11 @@ export async function POST(
           nextEligibleAt:
             nextEligibleAt.toISOString(),
 
+          dailyOddsCredits,
+
+          dailyOddsBudget:
+            DAILY_ODDS_BUDGET,
+
           monthlyOddsCredits,
 
           monthlyOddsBudget:
@@ -493,12 +621,60 @@ export async function POST(
     }
 
     // --------------------------------------------------
+    // FINAL SAFETY CHECK
+    //
+    // Do not allow the next request to push either
+    // budget above its cap.
+    // --------------------------------------------------
+
+    if (
+      dailyOddsCredits + 1 >
+      DAILY_ODDS_BUDGET
+    ) {
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+
+        reason:
+          'Next odds call would exceed the daily odds budget. No Odds API credit used.',
+
+        dailyOddsCredits,
+
+        dailyOddsBudget:
+          DAILY_ODDS_BUDGET,
+
+        monthlyOddsCredits,
+
+        monthlyOddsBudget:
+          MONTHLY_ODDS_BUDGET,
+      })
+    }
+
+    if (
+      monthlyOddsCredits + 1 >
+      MONTHLY_ODDS_BUDGET
+    ) {
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+
+        reason:
+          'Next odds call would exceed the monthly odds budget. No Odds API credit used.',
+
+        dailyOddsCredits,
+
+        dailyOddsBudget:
+          DAILY_ODDS_BUDGET,
+
+        monthlyOddsCredits,
+
+        monthlyOddsBudget:
+          MONTHLY_ODDS_BUDGET,
+      })
+    }
+
+    // --------------------------------------------------
     // RECORD PAID API ATTEMPT
-    //
-    // Record before calling the API so we keep a
-    // complete history even when the request fails.
-    //
-    // FAILED ROWS DO NOT AFFECT THE FRESHNESS COOLDOWN.
     // --------------------------------------------------
 
     const reason =
@@ -529,7 +705,9 @@ export async function POST(
       .select('id')
       .single()
 
-    if (usageInsertError) {
+    if (
+      usageInsertError
+    ) {
       throw new Error(
         usageInsertError.message
       )
@@ -578,7 +756,8 @@ export async function POST(
     // --------------------------------------------------
 
     for (
-      const game of games
+      const game of
+      games
     ) {
       const {
         data: savedGame,
@@ -664,9 +843,6 @@ export async function POST(
 
     // --------------------------------------------------
     // MARK SUCCESS
-    //
-    // Only this status is considered fresh for the
-    // cooldown calculation on future runs.
     // --------------------------------------------------
 
     const {
@@ -693,12 +869,22 @@ export async function POST(
         usageRun.id
       )
 
-    if (usageUpdateError) {
+    if (
+      usageUpdateError
+    ) {
       console.error(
         'Usage update error:',
         usageUpdateError
       )
     }
+
+    const updatedDailyOddsCredits =
+      dailyOddsCredits +
+      1
+
+    const updatedMonthlyOddsCredits =
+      monthlyOddsCredits +
+      1
 
     return NextResponse.json({
       success: true,
@@ -719,18 +905,30 @@ export async function POST(
               )
             ),
 
+      dailyOddsCredits:
+        updatedDailyOddsCredits,
+
+      dailyOddsBudget:
+        DAILY_ODDS_BUDGET,
+
+      estimatedDailyOddsCreditsRemaining:
+        Math.max(
+          0,
+          DAILY_ODDS_BUDGET -
+            updatedDailyOddsCredits
+        ),
+
       monthlyOddsCredits:
-        monthlyOddsCredits +
-        1,
+        updatedMonthlyOddsCredits,
 
       monthlyOddsBudget:
         MONTHLY_ODDS_BUDGET,
 
-      estimatedOddsCreditsRemaining:
-        MONTHLY_ODDS_BUDGET -
-        (
-          monthlyOddsCredits +
-          1
+      estimatedMonthlyOddsCreditsRemaining:
+        Math.max(
+          0,
+          MONTHLY_ODDS_BUDGET -
+            updatedMonthlyOddsCredits
         ),
 
       reason,
