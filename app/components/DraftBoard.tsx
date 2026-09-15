@@ -250,7 +250,10 @@ export default function DraftBoard({
   ] =
     useState<Pick[]>(picks)
 
-  const [message, setMessage] =
+  const [
+    message,
+    setMessage,
+  ] =
     useState('')
 
   const [
@@ -273,9 +276,54 @@ export default function DraftBoard({
       null
     )
 
+  const [
+    currentTime,
+    setCurrentTime,
+  ] =
+    useState<number | null>(
+      null
+    )
+
+  // --------------------------------------------------
+  // KEEP LOCAL PICKS IN SYNC WITH SERVER PROPS
+  // --------------------------------------------------
+
   useEffect(() => {
     setCurrentPicks(picks)
   }, [picks])
+
+  // --------------------------------------------------
+  // KEEP CURRENT CLOCK UPDATED
+  //
+  // Used so an expected sync can automatically change
+  // to "Overdue" without requiring a page refresh.
+  // --------------------------------------------------
+
+  useEffect(() => {
+    function updateClock() {
+      setCurrentTime(
+        Date.now()
+      )
+    }
+
+    updateClock()
+
+    const interval =
+      window.setInterval(
+        updateClock,
+        30000
+      )
+
+    return () => {
+      window.clearInterval(
+        interval
+      )
+    }
+  }, [])
+
+  // --------------------------------------------------
+  // AUTOMATIC PHONE REFRESH
+  // --------------------------------------------------
 
   useEffect(() => {
     let checking = false
@@ -386,6 +434,10 @@ export default function DraftBoard({
     currentPicks.length,
   ])
 
+  // --------------------------------------------------
+  // AUTOMATIC + NORMAL PICKS
+  // --------------------------------------------------
+
   const automaticPicks =
     currentPicks.filter(
       (pick) =>
@@ -397,6 +449,10 @@ export default function DraftBoard({
       (pick) =>
         !pick.is_automatic
     )
+
+  // --------------------------------------------------
+  // DRAFT ORDER
+  // --------------------------------------------------
 
   const firstPicker =
     players.find(
@@ -424,6 +480,10 @@ export default function DraftBoard({
     currentPlayer?.id ===
     loggedInPlayerId
 
+  // --------------------------------------------------
+  // FIRST-GAME-DAY RULE
+  // --------------------------------------------------
+
   const dayEligibleGames =
     allowLaterDayGames ||
     !firstGameDayKey
@@ -439,6 +499,10 @@ export default function DraftBoard({
   const laterDayGameCount =
     games.length -
     dayEligibleGames.length
+
+  // --------------------------------------------------
+  // REMOVE GAMES ALREADY PICKED
+  // --------------------------------------------------
 
   const pickedGameIds =
     new Set(
@@ -502,7 +566,7 @@ export default function DraftBoard({
   // 3-6h   = 1h
   // <=3h   = 30m
   //
-  // Supabase cron checks every 15 minutes, so round
+  // Supabase Cron checks every 15 minutes, so round
   // forward to the next cron slot.
   // --------------------------------------------------
 
@@ -569,6 +633,18 @@ export default function DraftBoard({
       )
   }
 
+  const nextSyncIsOverdue =
+    Boolean(
+      nextSyncAt &&
+      currentTime !== null &&
+      nextSyncAt.getTime() <=
+        currentTime
+    )
+
+  // --------------------------------------------------
+  // ALPHABETICAL TEAM DROPDOWN
+  // --------------------------------------------------
+
   const availableTeams =
     Array.from(
       new Set(
@@ -616,6 +692,10 @@ export default function DraftBoard({
         )
       : availableGames
 
+  // --------------------------------------------------
+  // GET LATEST SPREAD
+  // --------------------------------------------------
+
   function getSpread(
     game: Game,
     team: string
@@ -643,6 +723,10 @@ export default function DraftBoard({
     )
   }
 
+  // --------------------------------------------------
+  // FORMAT SPREAD
+  // --------------------------------------------------
+
   function formatSpread(
     spread: number
   ) {
@@ -652,6 +736,10 @@ export default function DraftBoard({
 
     return `${spread}`
   }
+
+  // --------------------------------------------------
+  // REQUEST PICK CONFIRMATION
+  // --------------------------------------------------
 
   function requestPick(
     game: Game,
@@ -713,6 +801,10 @@ export default function DraftBoard({
     })
   }
 
+  // --------------------------------------------------
+  // CANCEL PICK
+  // --------------------------------------------------
+
   function cancelPick() {
     if (submitting) {
       return
@@ -720,6 +812,10 @@ export default function DraftBoard({
 
     setPendingPick(null)
   }
+
+  // --------------------------------------------------
+  // CONFIRM + MAKE PICK
+  // --------------------------------------------------
 
   async function confirmPick() {
     if (
@@ -850,6 +946,10 @@ export default function DraftBoard({
     }
   }
 
+  // --------------------------------------------------
+  // PENDING PICK OPPONENT
+  // --------------------------------------------------
+
   let pendingOpponent =
     ''
 
@@ -875,8 +975,14 @@ export default function DraftBoard({
     }
   }
 
+  // --------------------------------------------------
+  // PAGE
+  // --------------------------------------------------
+
   return (
     <section className="space-y-6 lg:col-span-2">
+
+      {/* PICK CONFIRMATION MODAL */}
 
       {pendingPick && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
@@ -973,6 +1079,8 @@ export default function DraftBoard({
         </div>
       )}
 
+      {/* CURRENT TURN */}
+
       <div
         className={`rounded-2xl border p-6 ${
           isMyTurn
@@ -1043,6 +1151,8 @@ export default function DraftBoard({
 
       </div>
 
+      {/* FIRST GAME DAY STATUS */}
+
       {!allowLaterDayGames &&
         firstGameDayKey && (
           <div className="rounded-xl border border-amber-800/60 bg-amber-950/30 p-4">
@@ -1075,11 +1185,15 @@ export default function DraftBoard({
           </div>
         )}
 
+      {/* MESSAGE */}
+
       {message && (
         <div className="rounded-xl border border-slate-700 bg-slate-900 p-4 text-sm">
           {message}
         </div>
       )}
+
+      {/* TEAM FINDER */}
 
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
 
@@ -1156,6 +1270,8 @@ export default function DraftBoard({
 
       </div>
 
+      {/* AVAILABLE GAMES */}
+
       <div>
 
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -1194,15 +1310,19 @@ export default function DraftBoard({
 
                 Next sync:{' '}
 
-                {nextSyncAt ? (
+                {!nextSyncAt ? (
+                  <span className="font-bold text-slate-400">
+                    —
+                  </span>
+                ) : nextSyncIsOverdue ? (
+                  <span className="font-bold text-amber-400">
+                    Overdue — awaiting next cron check
+                  </span>
+                ) : (
                   <span className="font-bold text-cyan-300">
                     {formatNextSync(
                       nextSyncAt
                     )}
-                  </span>
-                ) : (
-                  <span className="font-bold text-slate-400">
-                    —
                   </span>
                 )}
 
@@ -1276,6 +1396,8 @@ export default function DraftBoard({
 
                     <div className="grid gap-3 md:grid-cols-2">
 
+                      {/* AWAY */}
+
                       <button
                         type="button"
                         disabled={
@@ -1319,6 +1441,8 @@ export default function DraftBoard({
                         </div>
 
                       </button>
+
+                      {/* HOME */}
 
                       <button
                         type="button"
@@ -1376,6 +1500,8 @@ export default function DraftBoard({
 
       </div>
 
+      {/* DRAFT HISTORY */}
+
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
 
         <h2 className="mb-5 text-2xl font-black">
@@ -1383,6 +1509,8 @@ export default function DraftBoard({
         </h2>
 
         <div className="space-y-3">
+
+          {/* AUTOMATIC PICKS */}
 
           {[...automaticPicks]
             .sort(
@@ -1454,6 +1582,8 @@ export default function DraftBoard({
                 )
               }
             )}
+
+          {/* NORMAL PICKS */}
 
           {[...normalPicks]
             .sort(
