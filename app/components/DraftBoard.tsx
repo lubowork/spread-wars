@@ -55,6 +55,8 @@ type Props = {
   firstGameDayLabel: string | null
 }
 
+const AUTOMATIC_WAKE_HOURS_BEFORE_KICKOFF = 12
+
 function getEasternDateKey(
   isoDate: string
 ) {
@@ -165,29 +167,8 @@ function formatNextSync(
 function getOddsSyncIntervalMinutes(
   hoursUntilKickoff: number
 ) {
-  if (
-    hoursUntilKickoff > 72
-  ) {
-    return 12 * 60
-  }
-
-  if (
-    hoursUntilKickoff > 48
-  ) {
-    return 8 * 60
-  }
-
-  if (
-    hoursUntilKickoff > 24
-  ) {
-    return 4 * 60
-  }
-
-  if (
-    hoursUntilKickoff > 12
-  ) {
-    return 2 * 60
-  }
+  // Inside the 12-hour wake window,
+  // this mirrors app/api/sync/route.ts.
 
   if (
     hoursUntilKickoff > 6
@@ -294,9 +275,6 @@ export default function DraftBoard({
 
   // --------------------------------------------------
   // KEEP CURRENT CLOCK UPDATED
-  //
-  // Used so an expected sync can automatically change
-  // to "Overdue" without requiring a page refresh.
   // --------------------------------------------------
 
   useEffect(() => {
@@ -556,19 +534,24 @@ export default function DraftBoard({
   // --------------------------------------------------
   // NEXT ODDS SYNC
   //
-  // Mirrors app/api/sync/route.ts:
+  // Mirrors the NEW app/api/sync/route.ts behavior:
   //
-  // >72h   = 12h
-  // 48-72h = 8h
-  // 24-48h = 4h
-  // 12-24h = 2h
-  // 6-12h  = 2h
-  // 3-6h   = 1h
-  // <=3h   = 30m
+  // More than 12 hours away:
+  //   Sleep completely.
   //
-  // Supabase Cron checks every 15 minutes, so round
-  // forward to the next cron slot.
+  // Wake:
+  //   12 hours before kickoff, rounded forward to the
+  //   next 15-minute Cron slot.
+  //
+  // Inside 12 hours:
+  //   6-12h = every 2 hours
+  //   3-6h  = every 1 hour
+  //   <=3h  = every 30 minutes
   // --------------------------------------------------
+
+  const effectiveNow =
+    currentTime ??
+    Date.now()
 
   const nextUpcomingGame =
     [...games]
@@ -577,7 +560,7 @@ export default function DraftBoard({
           new Date(
             game.start_time
           ).getTime() >
-          Date.now()
+          effectiveNow
       )
       .sort(
         (a, b) =>
@@ -592,21 +575,19 @@ export default function DraftBoard({
   let nextSyncAt:
     Date | null = null
 
-  if (
-    lastSyncedAt &&
-    nextUpcomingGame
-  ) {
-    const lastSyncDate =
-      new Date(
-        lastSyncedAt
-      )
+  let oddsSyncSleeping =
+    false
 
-    const hoursUntilKickoffAtLastSync =
+  if (nextUpcomingGame) {
+    const kickoffTime =
+      new Date(
+        nextUpcomingGame.start_time
+      ).getTime()
+
+    const hoursUntilKickoffNow =
       (
-        new Date(
-          nextUpcomingGame.start_time
-        ).getTime() -
-        lastSyncDate.getTime()
+        kickoffTime -
+        effectiveNow
       ) /
       (
         1000 *
@@ -614,28 +595,73 @@ export default function DraftBoard({
         60
       )
 
-    const intervalMinutes =
-      getOddsSyncIntervalMinutes(
-        hoursUntilKickoffAtLastSync
-      )
+    // ----------------------------------------------
+    // DEEP SLEEP
+    // ----------------------------------------------
 
-    const earliestNextSync =
-      new Date(
-        lastSyncDate.getTime() +
-          intervalMinutes *
-            60 *
-            1000
-      )
+    if (
+      hoursUntilKickoffNow >
+      AUTOMATIC_WAKE_HOURS_BEFORE_KICKOFF
+    ) {
+      oddsSyncSleeping =
+        true
 
-    nextSyncAt =
-      roundUpToNextCronSlot(
-        earliestNextSync
-      )
+      const wakeTime =
+        new Date(
+          kickoffTime -
+            AUTOMATIC_WAKE_HOURS_BEFORE_KICKOFF *
+              60 *
+              60 *
+              1000
+        )
+
+      nextSyncAt =
+        roundUpToNextCronSlot(
+          wakeTime
+        )
+    }
+
+    // ----------------------------------------------
+    // INSIDE 12-HOUR WAKE WINDOW
+    // ----------------------------------------------
+
+    if (
+      hoursUntilKickoffNow <=
+        AUTOMATIC_WAKE_HOURS_BEFORE_KICKOFF &&
+      lastSyncedAt
+    ) {
+      const lastSyncDate =
+        new Date(
+          lastSyncedAt
+        )
+
+      const intervalMinutes =
+        getOddsSyncIntervalMinutes(
+          Math.max(
+            0,
+            hoursUntilKickoffNow
+          )
+        )
+
+      const earliestNextSync =
+        new Date(
+          lastSyncDate.getTime() +
+            intervalMinutes *
+              60 *
+              1000
+        )
+
+      nextSyncAt =
+        roundUpToNextCronSlot(
+          earliestNextSync
+        )
+    }
   }
 
   const nextSyncIsOverdue =
     Boolean(
       nextSyncAt &&
+      !oddsSyncSleeping &&
       currentTime !== null &&
       nextSyncAt.getTime() <=
         currentTime
@@ -1329,6 +1355,13 @@ export default function DraftBoard({
               </div>
 
             </div>
+
+            {oddsSyncSleeping &&
+              nextSyncAt && (
+                <div className="mt-1 text-xs font-bold text-slate-500">
+                  Odds syncing is sleeping until 12 hours before the next kickoff.
+                </div>
+              )}
 
             {selectedTeam && (
               <div className="mt-1 text-sm font-bold text-cyan-400">
