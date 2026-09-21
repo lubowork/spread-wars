@@ -3,12 +3,19 @@ import { createClient } from '../../../lib/supabase-server'
 import { createAdminClient } from '../../../lib/supabase-admin'
 import { getCollegeFootballOdds } from '../../../lib/odds-api'
 
-const MONTHLY_ODDS_BUDGET = 260
+const MONTHLY_ODDS_BUDGET = 300
 const DAILY_ODDS_BUDGET = 12
 
-async function isAuthorized(
+const AUTOMATIC_WAKE_HOURS_BEFORE_KICKOFF = 12
+
+type AuthorizationResult = {
+  authorized: boolean
+  isCron: boolean
+}
+
+async function authorizeRequest(
   request: Request
-) {
+): Promise<AuthorizationResult> {
   const authHeader =
     request.headers.get(
       'authorization'
@@ -17,17 +24,25 @@ async function isAuthorized(
   const cronSecret =
     process.env.CRON_SECRET
 
-  // Allow Supabase Cron
+  // --------------------------------------------------
+  // SUPABASE CRON
+  // --------------------------------------------------
+
   if (
     cronSecret &&
     authHeader ===
       `Bearer ${cronSecret}`
   ) {
-    return true
+    return {
+      authorized: true,
+      isCron: true,
+    }
   }
 
-  // Otherwise require a logged-in
-  // Spread Wars player.
+  // --------------------------------------------------
+  // LOGGED-IN SPREAD WARS PLAYER
+  // --------------------------------------------------
+
   const authSupabase =
     await createClient()
 
@@ -37,7 +52,10 @@ async function isAuthorized(
     await authSupabase.auth.getUser()
 
   if (!user) {
-    return false
+    return {
+      authorized: false,
+      isCron: false,
+    }
   }
 
   const supabase =
@@ -59,10 +77,16 @@ async function isAuthorized(
     error ||
     !player
   ) {
-    return false
+    return {
+      authorized: false,
+      isCron: false,
+    }
   }
 
-  return true
+  return {
+    authorized: true,
+    isCron: false,
+  }
 }
 
 function getMonthStart() {
@@ -131,63 +155,19 @@ function getEasternDateKey(
   return `${year}-${month}-${day}`
 }
 
-function getRefreshIntervalMinutes(
-  hoursUntilNextGame:
-    number | null
+function getAutomaticRefreshMinutes(
+  hoursUntilNextGame: number
 ) {
-  // No upcoming game stored.
-  // Check twice per day.
+  // 6-12 hours before kickoff
   if (
-    hoursUntilNextGame ===
-    null
-  ) {
-    return 12 * 60
-  }
-
-  // More than 72 hours away
-  if (
-    hoursUntilNextGame >
-    72
-  ) {
-    return 12 * 60
-  }
-
-  // 48-72 hours away
-  if (
-    hoursUntilNextGame >
-    48
-  ) {
-    return 8 * 60
-  }
-
-  // 24-48 hours away
-  if (
-    hoursUntilNextGame >
-    24
-  ) {
-    return 4 * 60
-  }
-
-  // 12-24 hours away
-  if (
-    hoursUntilNextGame >
-    12
+    hoursUntilNextGame > 6
   ) {
     return 2 * 60
   }
 
-  // 6-12 hours away
+  // 3-6 hours before kickoff
   if (
-    hoursUntilNextGame >
-    6
-  ) {
-    return 2 * 60
-  }
-
-  // 3-6 hours away
-  if (
-    hoursUntilNextGame >
-    3
+    hoursUntilNextGame > 3
   ) {
     return 60
   }
@@ -196,22 +176,49 @@ function getRefreshIntervalMinutes(
   return 30
 }
 
-function formatReason(
-  hoursUntilNextGame:
-    number | null,
-  refreshMinutes:
-    number
+function formatAutomaticReason(
+  hoursUntilNextGame: number,
+  refreshMinutes: number
 ) {
-  if (
-    hoursUntilNextGame ===
-    null
-  ) {
-    return `No upcoming stored game found. Refresh window is every ${refreshMinutes} minutes.`
-  }
-
   return `Next kickoff is approximately ${hoursUntilNextGame.toFixed(
     1
-  )} hours away. Refresh window is every ${refreshMinutes} minutes.`
+  )} hours away. Automatic refresh window is every ${refreshMinutes} minutes.`
+}
+
+async function hasSuccessfulDiscovery(
+  reason: string
+) {
+  const supabase =
+    createAdminClient()
+
+  const {
+    data,
+    error,
+  } = await supabase
+    .from('odds_api_usage')
+    .select('id')
+    .eq(
+      'endpoint',
+      'odds'
+    )
+    .eq(
+      'status',
+      'succeeded'
+    )
+    .eq(
+      'reason',
+      reason
+    )
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(
+      error.message
+    )
+  }
+
+  return Boolean(data)
 }
 
 export async function POST(
@@ -221,8 +228,15 @@ export async function POST(
     createAdminClient()
 
   try {
-    const authorized =
-      await isAuthorized(
+    // --------------------------------------------------
+    // AUTHORIZATION
+    // --------------------------------------------------
+
+    const {
+      authorized,
+      isCron,
+    } =
+      await authorizeRequest(
         request
       )
 
@@ -239,60 +253,8 @@ export async function POST(
       )
     }
 
-    // --------------------------------------------------
-    // ACTIVE WEEK
-    // --------------------------------------------------
-
-    const {
-      data: week,
-      error: weekError,
-    } = await supabase
-      .from('weeks')
-      .select(`
-        id,
-        starts_at,
-        ends_at,
-        status
-      `)
-      .eq(
-        'status',
-        'active'
-      )
-      .order(
-        'created_at',
-        {
-          ascending: false,
-        }
-      )
-      .limit(1)
-      .maybeSingle()
-
-    if (weekError) {
-      throw new Error(
-        weekError.message
-      )
-    }
-
-    if (!week) {
-      return NextResponse.json({
-        success: true,
-        skipped: true,
-        reason:
-          'No active week. No Odds API credit used.',
-      })
-    }
-
-    if (
-      !week.starts_at ||
-      !week.ends_at
-    ) {
-      return NextResponse.json({
-        success: true,
-        skipped: true,
-        reason:
-          'Active week does not have a complete game window. No Odds API credit used.',
-      })
-    }
+    const now =
+      new Date()
 
     // --------------------------------------------------
     // MONTHLY ODDS USAGE
@@ -313,7 +275,8 @@ export async function POST(
         called_at,
         endpoint,
         credits,
-        status
+        status,
+        reason
       `)
       .gte(
         'called_at',
@@ -338,13 +301,6 @@ export async function POST(
 
     const allOddsUsageRows =
       usageRows ?? []
-
-    // --------------------------------------------------
-    // MONTHLY BUDGET
-    //
-    // Count successful, attempted and failed paid
-    // requests. This is deliberately conservative.
-    // --------------------------------------------------
 
     const monthlyOddsCredits =
       allOddsUsageRows.reduce(
@@ -381,17 +337,8 @@ export async function POST(
     }
 
     // --------------------------------------------------
-    // DAILY ODDS BUDGET
-    //
-    // Prevent a busy college football slate from
-    // consuming dozens of credits in a single day.
-    //
-    // Day boundaries use America/New_York because that
-    // is the timezone used throughout Spread Wars.
+    // DAILY ODDS USAGE
     // --------------------------------------------------
-
-    const now =
-      new Date()
 
     const todayEastern =
       getEasternDateKey(
@@ -455,176 +402,536 @@ export async function POST(
     }
 
     // --------------------------------------------------
-    // FIND NEXT UPCOMING STORED GAME
+    // FIND ACTIVE WEEK
     // --------------------------------------------------
 
     const {
-      data: nextGame,
-      error: nextGameError,
+      data: activeWeek,
+      error: activeWeekError,
     } = await supabase
-      .from('games')
+      .from('weeks')
       .select(`
         id,
-        start_time,
-        home_team,
-        away_team
+        starts_at,
+        ends_at,
+        status,
+        created_at
       `)
-      .gte(
-        'start_time',
-        now.toISOString()
-      )
-      .gte(
-        'start_time',
-        week.starts_at
-      )
-      .lt(
-        'start_time',
-        week.ends_at
-      )
       .eq(
-        'completed',
-        false
+        'status',
+        'active'
       )
       .order(
-        'start_time',
+        'created_at',
         {
-          ascending: true,
+          ascending: false,
         }
       )
       .limit(1)
       .maybeSingle()
 
-    if (nextGameError) {
+    if (activeWeekError) {
       throw new Error(
-        nextGameError.message
+        activeWeekError.message
       )
     }
+
+    let reason =
+      ''
+
+    let refreshMinutes:
+      number | null = null
 
     let hoursUntilNextGame:
-      | number
-      | null = null
-
-    if (nextGame) {
-      hoursUntilNextGame =
-        Math.max(
-          0,
-          (
-            new Date(
-              nextGame.start_time
-            ).getTime() -
-            now.getTime()
-          ) /
-            (
-              1000 *
-              60 *
-              60
-            )
-        )
-    }
-
-    const refreshMinutes =
-      getRefreshIntervalMinutes(
-        hoursUntilNextGame
-      )
+      number | null = null
 
     // --------------------------------------------------
-    // LAST SUCCESSFUL ODDS SYNC
+    // NO ACTIVE WEEK
     //
-    // Failed attempts are ignored here.
+    // Automatic Cron is allowed ONE discovery request
+    // for the most recently created week.
     //
-    // A failed request should never make the stored
-    // odds appear fresh.
+    // After that, Cron sleeps until another week becomes
+    // active or a new week record is created.
+    //
+    // Manual Admin Sync Odds can still force a request.
     // --------------------------------------------------
 
-    const successfulOddsRows =
-      allOddsUsageRows.filter(
-        (row) =>
-          row.status ===
-          'succeeded'
-      )
+    if (!activeWeek) {
+      if (!isCron) {
+        reason =
+          'Manual odds sync while no week is active.'
+      } else {
+        const {
+          data: latestWeek,
+          error: latestWeekError,
+        } = await supabase
+          .from('weeks')
+          .select(`
+            id,
+            status,
+            created_at
+          `)
+          .order(
+            'created_at',
+            {
+              ascending: false,
+            }
+          )
+          .limit(1)
+          .maybeSingle()
 
-    const lastSuccessfulOddsSync =
-      successfulOddsRows.length >
-      0
-        ? successfulOddsRows[0]
-        : null
+        if (latestWeekError) {
+          throw new Error(
+            latestWeekError.message
+          )
+        }
 
-    if (
-      lastSuccessfulOddsSync?.called_at
-    ) {
-      const lastSyncTime =
-        new Date(
-          lastSuccessfulOddsSync.called_at
-        ).getTime()
+        if (!latestWeek) {
+          return NextResponse.json({
+            success: true,
+            skipped: true,
 
-      const minutesSinceLastSync =
-        (
-          now.getTime() -
-          lastSyncTime
-        ) /
-        (
-          1000 *
-          60
-        )
+            reason:
+              'No week exists yet. No Odds API credit used.',
 
-      if (
-        minutesSinceLastSync <
-        refreshMinutes
-      ) {
-        const nextEligibleAt =
-          new Date(
-            lastSyncTime +
-              refreshMinutes *
-                60 *
-                1000
+            dailyOddsCredits,
+
+            dailyOddsBudget:
+              DAILY_ODDS_BUDGET,
+
+            monthlyOddsCredits,
+
+            monthlyOddsBudget:
+              MONTHLY_ODDS_BUDGET,
+          })
+        }
+
+        const discoveryReason =
+          `Idle-week discovery for week ${latestWeek.id}.`
+
+        const discoveryAlreadySucceeded =
+          await hasSuccessfulDiscovery(
+            discoveryReason
           )
 
-        return NextResponse.json({
-          success: true,
-          skipped: true,
+        if (
+          discoveryAlreadySucceeded
+        ) {
+          return NextResponse.json({
+            success: true,
+            skipped: true,
 
-          reason:
-            'Stored odds are fresh enough. No Odds API credit used.',
+            reason:
+              'No active week. The one-time discovery sync has already completed. No Odds API credit used.',
 
-          scheduleReason:
-            formatReason(
-              hoursUntilNextGame,
-              refreshMinutes
-            ),
+            discoveryComplete:
+              true,
 
-          minutesSinceLastSuccessfulSync:
-            Math.round(
-              minutesSinceLastSync
-            ),
+            dailyOddsCredits,
 
-          refreshMinutes,
+            dailyOddsBudget:
+              DAILY_ODDS_BUDGET,
 
-          lastSuccessfulSyncAt:
-            new Date(
-              lastSyncTime
-            ).toISOString(),
+            monthlyOddsCredits,
 
-          nextEligibleAt:
-            nextEligibleAt.toISOString(),
+            monthlyOddsBudget:
+              MONTHLY_ODDS_BUDGET,
+          })
+        }
 
-          dailyOddsCredits,
-
-          dailyOddsBudget:
-            DAILY_ODDS_BUDGET,
-
-          monthlyOddsCredits,
-
-          monthlyOddsBudget:
-            MONTHLY_ODDS_BUDGET,
-        })
+        reason =
+          discoveryReason
       }
     }
 
     // --------------------------------------------------
-    // FINAL SAFETY CHECK
-    //
-    // Do not allow the next request to push either
-    // budget above its cap.
+    // ACTIVE WEEK
+    // --------------------------------------------------
+
+    if (activeWeek) {
+      if (
+        !activeWeek.starts_at ||
+        !activeWeek.ends_at
+      ) {
+        if (isCron) {
+          return NextResponse.json({
+            success: true,
+            skipped: true,
+
+            reason:
+              'Active week does not have a complete game window. No Odds API credit used.',
+
+            dailyOddsCredits,
+
+            dailyOddsBudget:
+              DAILY_ODDS_BUDGET,
+
+            monthlyOddsCredits,
+
+            monthlyOddsBudget:
+              MONTHLY_ODDS_BUDGET,
+          })
+        }
+
+        reason =
+          'Manual odds sync for active week with incomplete game window.'
+      } else {
+        // ----------------------------------------------
+        // NEXT UPCOMING STORED GAME IN ACTIVE WEEK
+        // ----------------------------------------------
+
+        const {
+          data: nextGame,
+          error: nextGameError,
+        } = await supabase
+          .from('games')
+          .select(`
+            id,
+            start_time,
+            home_team,
+            away_team
+          `)
+          .gte(
+            'start_time',
+            now.toISOString()
+          )
+          .gte(
+            'start_time',
+            activeWeek.starts_at
+          )
+          .lt(
+            'start_time',
+            activeWeek.ends_at
+          )
+          .eq(
+            'completed',
+            false
+          )
+          .order(
+            'start_time',
+            {
+              ascending: true,
+            }
+          )
+          .limit(1)
+          .maybeSingle()
+
+        if (nextGameError) {
+          throw new Error(
+            nextGameError.message
+          )
+        }
+
+        // ----------------------------------------------
+        // MANUAL ADMIN REQUEST
+        //
+        // Manual sync bypasses the automatic sleep
+        // schedule but still respects monthly/daily
+        // safety budgets.
+        // ----------------------------------------------
+
+        if (!isCron) {
+          if (nextGame) {
+            hoursUntilNextGame =
+              Math.max(
+                0,
+                (
+                  new Date(
+                    nextGame.start_time
+                  ).getTime() -
+                  now.getTime()
+                ) /
+                  (
+                    1000 *
+                    60 *
+                    60
+                  )
+              )
+
+            reason =
+              `Manual odds sync. Next kickoff is approximately ${hoursUntilNextGame.toFixed(
+                1
+              )} hours away.`
+          } else {
+            reason =
+              'Manual odds sync. No upcoming stored game was found in the active week.'
+          }
+        }
+
+        // ----------------------------------------------
+        // AUTOMATIC CRON
+        // ----------------------------------------------
+
+        if (isCron) {
+          // --------------------------------------------
+          // NO STORED GAME YET
+          //
+          // Allow exactly one discovery request for
+          // this active week.
+          // --------------------------------------------
+
+          if (!nextGame) {
+            const discoveryReason =
+              `Active-week discovery for week ${activeWeek.id}.`
+
+            const discoveryAlreadySucceeded =
+              await hasSuccessfulDiscovery(
+                discoveryReason
+              )
+
+            if (
+              discoveryAlreadySucceeded
+            ) {
+              return NextResponse.json({
+                success: true,
+                skipped: true,
+
+                reason:
+                  'Active-week discovery already completed and no upcoming stored game is currently available. No Odds API credit used.',
+
+                discoveryComplete:
+                  true,
+
+                dailyOddsCredits,
+
+                dailyOddsBudget:
+                  DAILY_ODDS_BUDGET,
+
+                monthlyOddsCredits,
+
+                monthlyOddsBudget:
+                  MONTHLY_ODDS_BUDGET,
+              })
+            }
+
+            reason =
+              discoveryReason
+          }
+
+          // --------------------------------------------
+          // STORED GAME EXISTS
+          // --------------------------------------------
+
+          if (nextGame) {
+            hoursUntilNextGame =
+              Math.max(
+                0,
+                (
+                  new Date(
+                    nextGame.start_time
+                  ).getTime() -
+                  now.getTime()
+                ) /
+                  (
+                    1000 *
+                    60 *
+                    60
+                  )
+              )
+
+            // ------------------------------------------
+            // DEEP SLEEP
+            //
+            // Once discovery has loaded the slate, do
+            // not spend another odds credit until the
+            // next kickoff is within 12 hours.
+            //
+            // Example:
+            // Sunday discovery finds Wednesday game.
+            // Monday = 0 calls.
+            // Tuesday = 0 calls.
+            // Wednesday morning = syncing resumes.
+            // ------------------------------------------
+
+            if (
+              hoursUntilNextGame >
+              AUTOMATIC_WAKE_HOURS_BEFORE_KICKOFF
+            ) {
+              const wakeAt =
+                new Date(
+                  new Date(
+                    nextGame.start_time
+                  ).getTime() -
+                    AUTOMATIC_WAKE_HOURS_BEFORE_KICKOFF *
+                      60 *
+                      60 *
+                      1000
+                )
+
+              return NextResponse.json({
+                success: true,
+                skipped: true,
+
+                reason:
+                  `Next kickoff is ${hoursUntilNextGame.toFixed(
+                    1
+                  )} hours away. Automatic odds syncing is sleeping until 12 hours before kickoff.`,
+
+                sleeping: true,
+
+                nextKickoffAt:
+                  nextGame.start_time,
+
+                automaticWakeAt:
+                  wakeAt.toISOString(),
+
+                hoursUntilNextGame:
+                  Number(
+                    hoursUntilNextGame.toFixed(
+                      2
+                    )
+                  ),
+
+                dailyOddsCredits,
+
+                dailyOddsBudget:
+                  DAILY_ODDS_BUDGET,
+
+                monthlyOddsCredits,
+
+                monthlyOddsBudget:
+                  MONTHLY_ODDS_BUDGET,
+              })
+            }
+
+            // ------------------------------------------
+            // INSIDE 12 HOURS
+            // ------------------------------------------
+
+            refreshMinutes =
+              getAutomaticRefreshMinutes(
+                hoursUntilNextGame
+              )
+
+            reason =
+              formatAutomaticReason(
+                hoursUntilNextGame,
+                refreshMinutes
+              )
+
+            // ------------------------------------------
+            // LAST SUCCESSFUL ODDS REQUEST
+            // ------------------------------------------
+
+            const {
+              data: lastSuccessfulSync,
+              error:
+                lastSuccessfulSyncError,
+            } = await supabase
+              .from(
+                'odds_api_usage'
+              )
+              .select(`
+                id,
+                called_at
+              `)
+              .eq(
+                'endpoint',
+                'odds'
+              )
+              .eq(
+                'status',
+                'succeeded'
+              )
+              .order(
+                'called_at',
+                {
+                  ascending: false,
+                }
+              )
+              .limit(1)
+              .maybeSingle()
+
+            if (
+              lastSuccessfulSyncError
+            ) {
+              throw new Error(
+                lastSuccessfulSyncError.message
+              )
+            }
+
+            if (
+              lastSuccessfulSync?.called_at
+            ) {
+              const lastSyncTime =
+                new Date(
+                  lastSuccessfulSync.called_at
+                ).getTime()
+
+              const minutesSinceLastSync =
+                (
+                  now.getTime() -
+                  lastSyncTime
+                ) /
+                (
+                  1000 *
+                  60
+                )
+
+              if (
+                minutesSinceLastSync <
+                refreshMinutes
+              ) {
+                const nextEligibleAt =
+                  new Date(
+                    lastSyncTime +
+                      refreshMinutes *
+                        60 *
+                        1000
+                  )
+
+                return NextResponse.json({
+                  success: true,
+                  skipped: true,
+
+                  reason:
+                    'Stored odds are fresh enough. No Odds API credit used.',
+
+                  scheduleReason:
+                    reason,
+
+                  minutesSinceLastSuccessfulSync:
+                    Math.round(
+                      minutesSinceLastSync
+                    ),
+
+                  refreshMinutes,
+
+                  lastSuccessfulSyncAt:
+                    new Date(
+                      lastSyncTime
+                    ).toISOString(),
+
+                  nextEligibleAt:
+                    nextEligibleAt.toISOString(),
+
+                  hoursUntilNextGame:
+                    Number(
+                      hoursUntilNextGame.toFixed(
+                        2
+                      )
+                    ),
+
+                  dailyOddsCredits,
+
+                  dailyOddsBudget:
+                    DAILY_ODDS_BUDGET,
+
+                  monthlyOddsCredits,
+
+                  monthlyOddsBudget:
+                    MONTHLY_ODDS_BUDGET,
+                })
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // --------------------------------------------------
+    // FINAL BUDGET SAFETY CHECK
     // --------------------------------------------------
 
     if (
@@ -676,12 +983,6 @@ export async function POST(
     // --------------------------------------------------
     // RECORD PAID API ATTEMPT
     // --------------------------------------------------
-
-    const reason =
-      formatReason(
-        hoursUntilNextGame,
-        refreshMinutes
-      )
 
     const {
       data: usageRun,
@@ -893,6 +1194,8 @@ export async function POST(
       gamesSaved,
       oddsSaved,
 
+      reason,
+
       refreshMinutes,
 
       hoursUntilNextGame:
@@ -930,8 +1233,6 @@ export async function POST(
           MONTHLY_ODDS_BUDGET -
             updatedMonthlyOddsCredits
         ),
-
-      reason,
     })
   } catch (error) {
     console.error(
