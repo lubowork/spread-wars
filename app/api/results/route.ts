@@ -4,17 +4,40 @@ import { createAdminClient } from '../../../lib/supabase-admin'
 
 const MONTHLY_RESULTS_BUDGET = 200
 
-// Don't start asking for a final score until
-// a game has been underway for at least this long.
+// A game must have been underway for at least this
+// long before an automatic score request is justified.
 const MIN_HOURS_AFTER_KICKOFF = 3.5
 
-// Once we're in the grading window, don't make
-// another paid scores request more often than this.
-const RESULTS_REFRESH_MINUTES = 60
+type AuthorizationResult = {
+  authorized: boolean
+  isCron: boolean
+}
 
-async function isAuthorized(
+type EasternParts = {
+  dateKey: string
+  weekday: string
+  hour: number
+  minute: number
+}
+
+type PendingGame = {
+  id: string
+  external_game_id: string
+  home_team: string
+  away_team: string
+  start_time: string
+  completed: boolean
+}
+
+type AutomaticSlot = {
+  key: string
+  description: string
+  candidateGameIds: string[]
+}
+
+async function authorizeRequest(
   request: Request
-) {
+): Promise<AuthorizationResult> {
   const authHeader =
     request.headers.get(
       'authorization'
@@ -23,16 +46,25 @@ async function isAuthorized(
   const cronSecret =
     process.env.CRON_SECRET
 
-  // Allow Supabase Cron
+  // --------------------------------------------------
+  // SUPABASE CRON
+  // --------------------------------------------------
+
   if (
     cronSecret &&
     authHeader ===
       `Bearer ${cronSecret}`
   ) {
-    return true
+    return {
+      authorized: true,
+      isCron: true,
+    }
   }
 
-  // Allow signed-in player
+  // --------------------------------------------------
+  // SIGNED-IN SPREAD WARS PLAYER
+  // --------------------------------------------------
+
   const authSupabase =
     await createClient()
 
@@ -42,7 +74,10 @@ async function isAuthorized(
     await authSupabase.auth.getUser()
 
   if (!user) {
-    return false
+    return {
+      authorized: false,
+      isCron: false,
+    }
   }
 
   const supabase =
@@ -64,10 +99,16 @@ async function isAuthorized(
     error ||
     !player
   ) {
-    return false
+    return {
+      authorized: false,
+      isCron: false,
+    }
   }
 
-  return true
+  return {
+    authorized: true,
+    isCron: false,
+  }
 }
 
 function getMonthStart() {
@@ -87,6 +128,484 @@ function getMonthStart() {
   )
 }
 
+function getEasternParts(
+  date: Date
+): EasternParts {
+  const formatter =
+    new Intl.DateTimeFormat(
+      'en-US',
+      {
+        timeZone:
+          'America/New_York',
+
+        year:
+          'numeric',
+
+        month:
+          '2-digit',
+
+        day:
+          '2-digit',
+
+        weekday:
+          'short',
+
+        hour:
+          '2-digit',
+
+        minute:
+          '2-digit',
+
+        hourCycle:
+          'h23',
+      }
+    )
+
+  const parts =
+    formatter.formatToParts(
+      date
+    )
+
+  const year =
+    parts.find(
+      (part) =>
+        part.type === 'year'
+    )?.value ?? ''
+
+  const month =
+    parts.find(
+      (part) =>
+        part.type === 'month'
+    )?.value ?? ''
+
+  const day =
+    parts.find(
+      (part) =>
+        part.type === 'day'
+    )?.value ?? ''
+
+  const weekday =
+    parts.find(
+      (part) =>
+        part.type === 'weekday'
+    )?.value ?? ''
+
+  const hour =
+    Number(
+      parts.find(
+        (part) =>
+          part.type === 'hour'
+      )?.value ?? 0
+    )
+
+  const minute =
+    Number(
+      parts.find(
+        (part) =>
+          part.type === 'minute'
+      )?.value ?? 0
+    )
+
+  return {
+    dateKey:
+      `${year}-${month}-${day}`,
+
+    weekday,
+
+    hour,
+
+    minute,
+  }
+}
+
+function getPreviousDateKey(
+  dateKey: string
+) {
+  const [
+    year,
+    month,
+    day,
+  ] =
+    dateKey
+      .split('-')
+      .map(Number)
+
+  const date =
+    new Date(
+      Date.UTC(
+        year,
+        month - 1,
+        day
+      )
+    )
+
+  date.setUTCDate(
+    date.getUTCDate() - 1
+  )
+
+  const previousYear =
+    date
+      .getUTCFullYear()
+      .toString()
+      .padStart(
+        4,
+        '0'
+      )
+
+  const previousMonth =
+    (
+      date.getUTCMonth() +
+      1
+    )
+      .toString()
+      .padStart(
+        2,
+        '0'
+      )
+
+  const previousDay =
+    date
+      .getUTCDate()
+      .toString()
+      .padStart(
+        2,
+        '0'
+      )
+
+  return `${previousYear}-${previousMonth}-${previousDay}`
+}
+
+function getClockMinutes(
+  parts: EasternParts
+) {
+  return (
+    parts.hour * 60 +
+    parts.minute
+  )
+}
+
+function getHoursSinceKickoff(
+  game: PendingGame,
+  now: Date
+) {
+  return (
+    now.getTime() -
+    new Date(
+      game.start_time
+    ).getTime()
+  ) /
+    (
+      1000 *
+      60 *
+      60
+    )
+}
+
+function isMatureEnough(
+  game: PendingGame,
+  now: Date
+) {
+  return (
+    getHoursSinceKickoff(
+      game,
+      now
+    ) >=
+    MIN_HOURS_AFTER_KICKOFF
+  )
+}
+
+function getSaturdayGames(
+  pendingGames: PendingGame[]
+) {
+  return pendingGames.filter(
+    (game) =>
+      getEasternParts(
+        new Date(
+          game.start_time
+        )
+      ).weekday ===
+      'Sat'
+  )
+}
+
+function getAutomaticSlot(
+  now: Date,
+  pendingGames: PendingGame[]
+): AutomaticSlot | null {
+  const nowParts =
+    getEasternParts(
+      now
+    )
+
+  const clockMinutes =
+    getClockMinutes(
+      nowParts
+    )
+
+  // --------------------------------------------------
+  // FOLLOWING-MORNING MIDWEEK CHECK
+  //
+  // Sunday-Friday games get one automatic score-check
+  // opportunity beginning at 5:00 AM ET the following
+  // morning.
+  //
+  // The window stays open until noon so a temporarily
+  // delayed Cron job does not completely miss the slot.
+  //
+  // Saturday games are intentionally excluded because
+  // they use the dedicated Saturday schedule below.
+  // --------------------------------------------------
+
+  const MIDWEEK_START =
+    5 * 60
+
+  const MIDWEEK_END =
+    12 * 60
+
+  if (
+    clockMinutes >=
+      MIDWEEK_START &&
+    clockMinutes <
+      MIDWEEK_END
+  ) {
+    const previousDateKey =
+      getPreviousDateKey(
+        nowParts.dateKey
+      )
+
+    const midweekCandidates =
+      pendingGames.filter(
+        (game) => {
+          const gameParts =
+            getEasternParts(
+              new Date(
+                game.start_time
+              )
+            )
+
+          if (
+            gameParts.dateKey !==
+            previousDateKey
+          ) {
+            return false
+          }
+
+          if (
+            gameParts.weekday ===
+            'Sat'
+          ) {
+            return false
+          }
+
+          return isMatureEnough(
+            game,
+            now
+          )
+        }
+      )
+
+    if (
+      midweekCandidates.length >
+      0
+    ) {
+      return {
+        key:
+          `${nowParts.dateKey}-05:00-midweek`,
+
+        description:
+          '5:00 AM ET following-morning score check.',
+
+        candidateGameIds:
+          midweekCandidates.map(
+            (game) =>
+              game.id
+          ),
+      }
+    }
+  }
+
+  // --------------------------------------------------
+  // SATURDAY 3:30 PM
+  //
+  // This slot remains active until the 7:30 PM slot.
+  // Cron will still only be allowed one paid call in
+  // the entire slot.
+  // --------------------------------------------------
+
+  if (
+    nowParts.weekday ===
+      'Sat'
+  ) {
+    const saturdayGames =
+      getSaturdayGames(
+        pendingGames
+      )
+
+    const maturedSaturdayGames =
+      saturdayGames.filter(
+        (game) =>
+          isMatureEnough(
+            game,
+            now
+          )
+      )
+
+    const SLOT_330 =
+      15 * 60 + 30
+
+    const SLOT_730 =
+      19 * 60 + 30
+
+    const SLOT_1030 =
+      22 * 60 + 30
+
+    if (
+      clockMinutes >=
+        SLOT_330 &&
+      clockMinutes <
+        SLOT_730 &&
+      maturedSaturdayGames.length >
+        0
+    ) {
+      return {
+        key:
+          `${nowParts.dateKey}-15:30-saturday`,
+
+        description:
+          'Saturday 3:30 PM ET score check.',
+
+        candidateGameIds:
+          maturedSaturdayGames.map(
+            (game) =>
+              game.id
+          ),
+      }
+    }
+
+    // ------------------------------------------------
+    // SATURDAY 7:30 PM
+    // ------------------------------------------------
+
+    if (
+      clockMinutes >=
+        SLOT_730 &&
+      clockMinutes <
+        SLOT_1030 &&
+      maturedSaturdayGames.length >
+        0
+    ) {
+      return {
+        key:
+          `${nowParts.dateKey}-19:30-saturday`,
+
+        description:
+          'Saturday 7:30 PM ET score check.',
+
+        candidateGameIds:
+          maturedSaturdayGames.map(
+            (game) =>
+              game.id
+          ),
+      }
+    }
+
+    // ------------------------------------------------
+    // SATURDAY 10:30 PM
+    //
+    // Remains the active slot through midnight.
+    // ------------------------------------------------
+
+    if (
+      clockMinutes >=
+        SLOT_1030 &&
+      maturedSaturdayGames.length >
+        0
+    ) {
+      return {
+        key:
+          `${nowParts.dateKey}-22:30-saturday`,
+
+        description:
+          'Saturday 10:30 PM ET score check.',
+
+        candidateGameIds:
+          maturedSaturdayGames.map(
+            (game) =>
+              game.id
+          ),
+      }
+    }
+  }
+
+  // --------------------------------------------------
+  // SUNDAY 2:00 AM
+  //
+  // Final automatic check for Saturday's slate.
+  //
+  // Keep the slot open until 5:00 AM ET so a delayed
+  // Cron execution still has time to perform the final
+  // Saturday grading pass.
+  // --------------------------------------------------
+
+  if (
+    nowParts.weekday ===
+      'Sun'
+  ) {
+    const SLOT_200 =
+      2 * 60
+
+    const SLOT_END =
+      5 * 60
+
+    if (
+      clockMinutes >=
+        SLOT_200 &&
+      clockMinutes <
+        SLOT_END
+    ) {
+      const saturdayGames =
+        getSaturdayGames(
+          pendingGames
+        )
+
+      const maturedSaturdayGames =
+        saturdayGames.filter(
+          (game) =>
+            isMatureEnough(
+              game,
+              now
+            )
+        )
+
+      if (
+        maturedSaturdayGames.length >
+        0
+      ) {
+        const saturdayDate =
+          getPreviousDateKey(
+            nowParts.dateKey
+          )
+
+        return {
+          key:
+            `${saturdayDate}-02:00-sunday-final`,
+
+          description:
+            'Sunday 2:00 AM ET final Saturday score check.',
+
+          candidateGameIds:
+            maturedSaturdayGames.map(
+              (game) =>
+                game.id
+            ),
+        }
+      }
+    }
+  }
+
+  return null
+}
+
 export async function POST(
   request: Request
 ) {
@@ -94,8 +613,15 @@ export async function POST(
     createAdminClient()
 
   try {
-    const authorized =
-      await isAuthorized(
+    // --------------------------------------------------
+    // AUTHORIZATION
+    // --------------------------------------------------
+
+    const {
+      authorized,
+      isCron,
+    } =
+      await authorizeRequest(
         request
       )
 
@@ -103,7 +629,8 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          error: 'Unauthorized',
+          error:
+            'Unauthorized',
         },
         {
           status: 401,
@@ -117,7 +644,8 @@ export async function POST(
 
     const {
       data: pendingPicks,
-      error: pendingPicksError,
+      error:
+        pendingPicksError,
     } = await supabase
       .from('picks')
       .select(`
@@ -130,7 +658,9 @@ export async function POST(
         'pending'
       )
 
-    if (pendingPicksError) {
+    if (
+      pendingPicksError
+    ) {
       throw new Error(
         pendingPicksError.message
       )
@@ -138,18 +668,20 @@ export async function POST(
 
     if (
       !pendingPicks ||
-      pendingPicks.length === 0
+      pendingPicks.length ===
+        0
     ) {
       return NextResponse.json({
         success: true,
         skipped: true,
+
         reason:
           'There are no pending picks to grade. No Scores API credits used.',
       })
     }
 
     // --------------------------------------------------
-    // UNIQUE GAMES THAT STILL HAVE PENDING PICKS
+    // UNIQUE GAMES WITH PENDING PICKS
     // --------------------------------------------------
 
     const pendingGameIds =
@@ -164,7 +696,8 @@ export async function POST(
 
     const {
       data: pendingGames,
-      error: pendingGamesError,
+      error:
+        pendingGamesError,
     } = await supabase
       .from('games')
       .select(`
@@ -190,7 +723,9 @@ export async function POST(
         }
       )
 
-    if (pendingGamesError) {
+    if (
+      pendingGamesError
+    ) {
       throw new Error(
         pendingGamesError.message
       )
@@ -198,78 +733,118 @@ export async function POST(
 
     if (
       !pendingGames ||
-      pendingGames.length === 0
+      pendingGames.length ===
+        0
     ) {
       return NextResponse.json({
         success: true,
         skipped: true,
+
         reason:
           'No unfinished games have pending picks. No Scores API credits used.',
       })
     }
 
-    // --------------------------------------------------
-    // ONLY SPEND CREDITS IF A GAME SHOULD BE NEAR FINAL
-    // --------------------------------------------------
-
     const now =
       new Date()
 
-    const gradingCandidates =
-      pendingGames.filter(
-        (game) => {
-          const kickoff =
-            new Date(
-              game.start_time
-            ).getTime()
+    // --------------------------------------------------
+    // AUTOMATIC VS MANUAL
+    // --------------------------------------------------
 
-          const hoursSinceKickoff =
-            (
-              now.getTime() -
-              kickoff
-            ) /
-            (
-              1000 *
-              60 *
-              60
+    let gradingCandidates:
+      PendingGame[] = []
+
+    let usageReason =
+      ''
+
+    let automaticSlot:
+      AutomaticSlot | null =
+        null
+
+    if (isCron) {
+      automaticSlot =
+        getAutomaticSlot(
+          now,
+          pendingGames
+        )
+
+      if (!automaticSlot) {
+        return NextResponse.json({
+          success: true,
+          skipped: true,
+
+          reason:
+            'No automatic scoring window is active right now. No Scores API credits used.',
+
+          schedule:
+            'Saturday: 3:30 PM, 7:30 PM, 10:30 PM ET; Sunday: 2:00 AM ET final Saturday check; non-Saturday games: 5:00 AM ET the following morning.',
+        })
+      }
+
+      const candidateSet =
+        new Set(
+          automaticSlot
+            .candidateGameIds
+        )
+
+      gradingCandidates =
+        pendingGames.filter(
+          (game) =>
+            candidateSet.has(
+              game.id
             )
-
-          return (
-            hoursSinceKickoff >=
-            MIN_HOURS_AFTER_KICKOFF
-          )
-        }
-      )
-
-    if (
-      gradingCandidates.length === 0
-    ) {
-      const nextPendingGame =
-        pendingGames[0]
-
-      const kickoff =
-        new Date(
-          nextPendingGame.start_time
         )
 
-      const firstEligibleCheck =
-        new Date(
-          kickoff.getTime() +
-            MIN_HOURS_AFTER_KICKOFF *
-              60 *
-              60 *
-              1000
+      if (
+        gradingCandidates.length ===
+        0
+      ) {
+        return NextResponse.json({
+          success: true,
+          skipped: true,
+
+          reason:
+            'The scoring window is active, but no pending game is mature enough to justify a paid score request.',
+        })
+      }
+
+      usageReason =
+        `Automatic results slot ${automaticSlot.key}. ${automaticSlot.description} Checking ${gradingCandidates.length} unfinished game(s) with pending picks.`
+    } else {
+      // ----------------------------------------------
+      // MANUAL ADMIN GRADE RESULTS
+      //
+      // Manual grading can run outside the automatic
+      // schedule, but we still refuse to spend credits
+      // on games that have not been underway long
+      // enough to plausibly be final.
+      // ----------------------------------------------
+
+      gradingCandidates =
+        pendingGames.filter(
+          (game) =>
+            isMatureEnough(
+              game,
+              now
+            )
         )
 
-      return NextResponse.json({
-        success: true,
-        skipped: true,
-        reason:
-          'Pending games have not been underway long enough to justify a paid score check.',
-        firstEligibleCheck:
-          firstEligibleCheck.toISOString(),
-        noCreditsUsed: true,
-      })
+      if (
+        gradingCandidates.length ===
+        0
+      ) {
+        return NextResponse.json({
+          success: true,
+          skipped: true,
+
+          reason:
+            `No pending game has been underway for at least ${MIN_HOURS_AFTER_KICKOFF} hours. No Scores API credits used.`,
+        })
+      }
+
+      usageReason =
+        `Manual results check for ${gradingCandidates.length} unfinished game(s) with pending picks.`
     }
 
     // --------------------------------------------------
@@ -291,7 +866,8 @@ export async function POST(
         called_at,
         endpoint,
         credits,
-        status
+        status,
+        reason
       `)
       .gte(
         'called_at',
@@ -314,10 +890,11 @@ export async function POST(
       )
     }
 
+    const allResultsUsageRows =
+      usageRows ?? []
+
     const monthlyResultsCredits =
-      (
-        usageRows ?? []
-      ).reduce(
+      allResultsUsageRows.reduce(
         (
           total,
           row
@@ -336,66 +913,74 @@ export async function POST(
       return NextResponse.json({
         success: true,
         skipped: true,
+
         reason:
           'Monthly Spread Wars results budget reached. No Scores API credits used.',
+
         monthlyResultsCredits,
+
+        monthlyResultsBudget:
+          MONTHLY_RESULTS_BUDGET,
+      })
+    }
+
+    if (
+      monthlyResultsCredits + 2 >
+      MONTHLY_RESULTS_BUDGET
+    ) {
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+
+        reason:
+          'Next Scores API request would exceed the monthly results budget. No Scores API credits used.',
+
+        monthlyResultsCredits,
+
         monthlyResultsBudget:
           MONTHLY_RESULTS_BUDGET,
       })
     }
 
     // --------------------------------------------------
-    // DON'T CHECK MORE THAN ONCE PER HOUR
+    // ONE PAID CALL PER AUTOMATIC SLOT
+    //
+    // Attempted, succeeded, or failed all count as the
+    // slot having been used. This is conservative
+    // because a failed provider request may still have
+    // consumed credits.
     // --------------------------------------------------
 
-    const lastResultsSync =
-      usageRows &&
-      usageRows.length > 0
-        ? usageRows[0]
-        : null
-
     if (
-      lastResultsSync?.called_at
+      isCron &&
+      automaticSlot
     ) {
-      const lastSyncTime =
-        new Date(
-          lastResultsSync.called_at
-        ).getTime()
+      const slotPrefix =
+        `Automatic results slot ${automaticSlot.key}.`
 
-      const minutesSinceLastSync =
-        (
-          now.getTime() -
-          lastSyncTime
-        ) /
-        (
-          1000 *
-          60
+      const slotAlreadyUsed =
+        allResultsUsageRows.some(
+          (row) =>
+            typeof row.reason ===
+              'string' &&
+            row.reason.startsWith(
+              slotPrefix
+            )
         )
 
-      if (
-        minutesSinceLastSync <
-        RESULTS_REFRESH_MINUTES
-      ) {
-        const nextEligibleAt =
-          new Date(
-            lastSyncTime +
-              RESULTS_REFRESH_MINUTES *
-                60 *
-                1000
-          )
-
+      if (slotAlreadyUsed) {
         return NextResponse.json({
           success: true,
           skipped: true,
+
           reason:
-            'Scores were checked recently. No Scores API credits used.',
-          minutesSinceLastSync:
-            Math.round(
-              minutesSinceLastSync
-            ),
-          nextEligibleAt:
-            nextEligibleAt.toISOString(),
+            `${automaticSlot.description} This automatic scoring slot has already used its one permitted Scores API request.`,
+
+          automaticSlot:
+            automaticSlot.key,
+
           monthlyResultsCredits,
+
           monthlyResultsBudget:
             MONTHLY_RESULTS_BUDGET,
         })
@@ -416,16 +1001,17 @@ export async function POST(
     }
 
     // --------------------------------------------------
-    // RECORD THE PAID ATTEMPT
+    // RECORD PAID ATTEMPT
     //
-    // Scores + daysFrom costs 2 credits.
-    // Record it before the request for conservative
-    // quota protection.
+    // Scores + daysFrom=1 normally costs 2 credits.
+    // Record before the provider request so quota
+    // protection remains conservative.
     // --------------------------------------------------
 
     const {
       data: usageRun,
-      error: usageInsertError,
+      error:
+        usageInsertError,
     } = await supabase
       .from(
         'odds_api_usage'
@@ -441,12 +1027,14 @@ export async function POST(
           'attempted',
 
         reason:
-          `Checking ${gradingCandidates.length} unfinished game(s) with pending picks at least ${MIN_HOURS_AFTER_KICKOFF} hours after kickoff.`,
+          usageReason,
       })
       .select('id')
       .single()
 
-    if (usageInsertError) {
+    if (
+      usageInsertError
+    ) {
       throw new Error(
         usageInsertError.message
       )
@@ -454,9 +1042,6 @@ export async function POST(
 
     // --------------------------------------------------
     // SCORES API
-    //
-    // daysFrom=1 is enough for our grading job.
-    // Using daysFrom costs 2 credits.
     // --------------------------------------------------
 
     const url =
@@ -479,7 +1064,8 @@ export async function POST(
       'iso'
     )
 
-    let response: Response
+    let response:
+      Response
 
     try {
       response =
@@ -538,7 +1124,7 @@ export async function POST(
     }
 
     // --------------------------------------------------
-    // USE ACTUAL API-REPORTED COST IF AVAILABLE
+    // ACTUAL API-REPORTED COST
     // --------------------------------------------------
 
     const reportedCost =
@@ -645,7 +1231,6 @@ export async function POST(
         continue
       }
 
-      // Only care about games in our pending set.
       if (
         !pendingGameIds.includes(
           storedGame.id
@@ -674,7 +1259,9 @@ export async function POST(
           storedGame.id
         )
 
-      if (updateGameError) {
+      if (
+        updateGameError
+      ) {
         throw new Error(
           updateGameError.message
         )
@@ -715,8 +1302,10 @@ export async function POST(
         const pick of
         picks ?? []
       ) {
-        // Never grade an automatic pick
-        // without its official locked line.
+        // ----------------------------------------------
+        // AUTOMATIC PICKS REQUIRE OFFICIAL LOCKED LINE
+        // ----------------------------------------------
+
         if (
           pick.is_automatic &&
           !pick.line_locked
@@ -784,13 +1373,16 @@ export async function POST(
         if (
           adjustedMargin > 0
         ) {
-          result = 'win'
+          result =
+            'win'
         } else if (
           adjustedMargin < 0
         ) {
-          result = 'loss'
+          result =
+            'loss'
         } else {
-          result = 'push'
+          result =
+            'push'
         }
 
         const {
@@ -819,11 +1411,12 @@ export async function POST(
     }
 
     // --------------------------------------------------
-    // MARK USAGE RECORD SUCCESSFUL
+    // MARK USAGE SUCCESSFUL
     // --------------------------------------------------
 
     const {
-      error: usageUpdateError,
+      error:
+        usageUpdateError,
     } = await supabase
       .from(
         'odds_api_usage'
@@ -840,13 +1433,18 @@ export async function POST(
 
         odds_saved:
           picksGraded,
+
+        error:
+          null,
       })
       .eq(
         'id',
         usageRun.id
       )
 
-    if (usageUpdateError) {
+    if (
+      usageUpdateError
+    ) {
       console.error(
         'Usage update error:',
         usageUpdateError
@@ -860,18 +1458,33 @@ export async function POST(
     return NextResponse.json({
       success: true,
       skipped: false,
+
+      automatic:
+        isCron,
+
+      automaticSlot:
+        automaticSlot?.key ??
+        null,
+
       gamesUpdated,
+
       picksGraded,
+
       skippedUnlocked,
+
       gradingCandidates:
         gradingCandidates.length,
+
       creditsUsed:
         actualCost,
+
       monthlyResultsCredits:
         monthlyResultsCredits +
         actualCost,
+
       monthlyResultsBudget:
         MONTHLY_RESULTS_BUDGET,
+
       apiRequestsRemaining:
         response.headers.get(
           'x-requests-remaining'
