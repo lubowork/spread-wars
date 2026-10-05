@@ -1,1067 +1,2335 @@
 import { NextResponse } from 'next/server'
+
 import webpush from 'web-push'
+
 import { createClient } from '../../../lib/supabase-server'
+
 import { createAdminClient } from '../../../lib/supabase-admin'
 
+
+
 function configureWebPush() {
+
   const subject =
+
     process.env.VAPID_SUBJECT
 
+
+
   const publicKey =
+
     process.env
+
       .NEXT_PUBLIC_VAPID_PUBLIC_KEY
 
+
+
   const privateKey =
+
     process.env
+
       .VAPID_PRIVATE_KEY
 
+
+
   if (
+
     !subject ||
+
     !publicKey ||
+
     !privateKey
+
   ) {
+
     throw new Error(
+
       'Push notification VAPID configuration is incomplete.'
+
     )
+
   }
+
+
 
   webpush.setVapidDetails(
+
     subject,
+
     publicKey,
+
     privateKey
+
   )
+
 }
+
+
 
 function getEasternDateKey(
+
   isoDate: string
+
 ) {
+
   const formatter =
+
     new Intl.DateTimeFormat(
+
       'en-US',
+
       {
+
         timeZone:
+
           'America/New_York',
+
         year: 'numeric',
+
         month: '2-digit',
+
         day: '2-digit',
+
       }
+
     )
+
+
 
   const parts =
+
     formatter.formatToParts(
+
       new Date(isoDate)
+
     )
+
+
 
   const year =
+
     parts.find(
+
       (part) =>
+
         part.type === 'year'
+
     )?.value
+
+
 
   const month =
+
     parts.find(
+
       (part) =>
+
         part.type === 'month'
+
     )?.value
+
+
 
   const day =
+
     parts.find(
+
       (part) =>
+
         part.type === 'day'
+
     )?.value
 
+
+
   if (
+
     !year ||
+
     !month ||
+
     !day
+
   ) {
+
     throw new Error(
+
       'Unable to determine game date.'
+
     )
+
   }
+
+
 
   return `${year}-${month}-${day}`
+
 }
 
-export async function POST(
-  request: Request
+
+
+
+function normalizeTeam(
+  value: string
 ) {
+
+  return value
+    .trim()
+    .toLowerCase()
+
+}
+
+
+function matchesAutomaticTeam(
+  automaticTeam: string | null,
+  actualTeam: string
+) {
+
+  if (!automaticTeam) {
+    return false
+  }
+
+  const automatic =
+    normalizeTeam(
+      automaticTeam
+    )
+
+  const actual =
+    normalizeTeam(
+      actualTeam
+    )
+
+  if (
+    automatic.includes(
+      'penn state'
+    )
+  ) {
+
+    return actual.includes(
+      'penn state'
+    )
+
+  }
+
+  // Miami means the Hurricanes,
+  // never Miami (OH).
+  if (automatic === 'miami') {
+
+    return (
+      actual === 'miami' ||
+      actual.includes(
+        'miami hurricanes'
+      )
+    )
+
+  }
+
+  return actual.includes(
+    automatic
+  )
+
+}
+
+
+export async function POST(
+
+  request: Request
+
+) {
+
   try {
+
     // --------------------------------------------------
+
     // 1. VERIFY LOGGED-IN USER
+
     // --------------------------------------------------
+
+
 
     const authSupabase =
+
       await createClient()
 
+
+
     const {
+
       data: { user },
+
       error: userError,
+
     } =
+
       await authSupabase.auth.getUser()
 
+
+
     if (
+
       userError ||
+
       !user
+
     ) {
+
       return NextResponse.json(
+
         {
+
           success: false,
+
           error:
+
             'You must be signed in to make a pick.',
+
         },
+
         {
+
           status: 401,
+
         }
+
       )
+
     }
+
+
 
     const supabase =
+
       createAdminClient()
 
-    // --------------------------------------------------
-    // 2. FIND LOGGED-IN PLAYER
+
+
     // --------------------------------------------------
 
+    // 2. FIND LOGGED-IN PLAYER
+
+    // --------------------------------------------------
+
+
+
     const {
+
       data: loggedInPlayer,
+
       error: playerError,
+
     } = await supabase
+
       .from('players')
+
       .select(`
+
         id,
+
         name,
+
         auth_user_id
+
       `)
+
       .eq(
+
         'auth_user_id',
+
         user.id
+
       )
+
       .maybeSingle()
+
+
 
     if (playerError) {
+
       throw new Error(
+
         playerError.message
+
       )
+
     }
+
+
 
     if (!loggedInPlayer) {
+
       return NextResponse.json(
+
         {
+
           success: false,
+
           error:
+
             'Your account is not linked to a Spread Wars player.',
+
         },
+
         {
+
           status: 403,
+
         }
+
       )
+
     }
 
+
+
     // --------------------------------------------------
+
     // 3. READ REQUEST
+
     // --------------------------------------------------
+
+
 
     const body =
+
       await request.json()
 
+
+
     const {
+
       weekId,
+
       playerId,
+
       gameId,
+
       team,
+
     } = body
 
+
+
     if (
+
       !weekId ||
+
       !gameId ||
+
       !team
+
     ) {
+
       return NextResponse.json(
+
         {
+
           success: false,
+
           error:
+
             'weekId, gameId, and team are required.',
+
         },
+
         {
+
           status: 400,
+
         }
+
       )
+
     }
 
+
+
     // --------------------------------------------------
+
     // 4. DO NOT ALLOW IMPERSONATION
+
     // --------------------------------------------------
+
+
 
     if (
+
       playerId &&
+
       playerId !==
+
         loggedInPlayer.id
+
     ) {
+
       return NextResponse.json(
+
         {
+
           success: false,
+
           error:
+
             `You are signed in as ${loggedInPlayer.name}. You cannot submit a pick for another player.`,
+
         },
+
         {
+
           status: 403,
+
         }
+
       )
+
     }
 
+
+
     // --------------------------------------------------
+
     // 5. GET ACTIVE WEEK
+
     // --------------------------------------------------
+
+
 
     const {
+
       data: week,
+
       error: weekError,
+
     } = await supabase
+
       .from('weeks')
+
       .select(`
+
         id,
+
         first_picker_id,
+
         status,
+
         starts_at,
+
         ends_at,
+
         allow_later_day_games
+
       `)
+
       .eq(
+
         'id',
+
         weekId
+
       )
+
       .maybeSingle()
+
+
 
     if (weekError) {
+
       throw new Error(
+
         weekError.message
+
       )
+
     }
+
+
 
     if (!week) {
+
       return NextResponse.json(
+
         {
+
           success: false,
+
           error:
+
             'Week not found.',
+
         },
+
         {
+
           status: 404,
+
         }
+
       )
+
     }
 
+
+
     if (
+
       week.status !==
+
       'active'
+
     ) {
+
       return NextResponse.json(
+
         {
+
           success: false,
+
           error:
+
             'This week is not currently active.',
+
         },
+
         {
+
           status: 400,
+
         }
+
       )
+
     }
+
+
 
     if (
+
       !week.starts_at ||
+
       !week.ends_at
+
     ) {
+
       return NextResponse.json(
+
         {
+
           success: false,
+
           error:
+
             'The active week does not have a complete game window configured.',
+
         },
+
         {
+
           status: 400,
+
         }
+
       )
+
     }
 
+
+
     // --------------------------------------------------
+
     // 6. GET BOTH PLAYERS
+
     // --------------------------------------------------
+
+
 
     const {
+
       data: players,
+
       error: playersError,
+
     } = await supabase
+
       .from('players')
+
       .select(`
+
         id,
-        name
+
+        name,
+        automatic_team
+
       `)
+
       .order('name')
 
+
+
     if (playersError) {
+
       throw new Error(
+
         playersError.message
+
       )
+
     }
 
+
+
     if (
+
       !players ||
+
       players.length !== 2
+
     ) {
+
       return NextResponse.json(
+
         {
+
           success: false,
+
           error:
+
             'Spread Wars requires exactly two players.',
+
         },
+
         {
+
           status: 500,
+
         }
+
       )
+
     }
+
+
 
     const firstPicker =
+
       players.find(
+
         (player) =>
+
           player.id ===
+
           week.first_picker_id
+
       )
+
+
 
     const secondPicker =
+
       players.find(
+
         (player) =>
+
           player.id !==
+
           week.first_picker_id
+
       )
+
+
 
     if (
+
       !firstPicker ||
+
       !secondPicker
+
     ) {
+
       return NextResponse.json(
+
         {
+
           success: false,
+
           error:
+
             'Unable to determine draft order.',
+
         },
+
         {
+
           status: 500,
+
         }
+
       )
+
     }
 
-    // --------------------------------------------------
-    // 7. GET SELECTED GAME
+
+
     // --------------------------------------------------
 
+    // 7. GET SELECTED GAME
+
+    // --------------------------------------------------
+
+
+
     const {
+
       data: game,
+
       error: gameError,
+
     } = await supabase
+
       .from('games')
+
       .select(`
+
         id,
+
         home_team,
+
         away_team,
+
         start_time,
+
         completed
+
       `)
+
       .eq(
+
         'id',
+
         gameId
+
       )
+
       .maybeSingle()
+
+
 
     if (gameError) {
+
       throw new Error(
+
         gameError.message
+
       )
+
     }
+
+
 
     if (!game) {
+
       return NextResponse.json(
+
         {
+
           success: false,
+
           error:
+
             'Game not found.',
+
         },
+
         {
+
           status: 404,
+
         }
+
       )
+
     }
 
+
+
     // --------------------------------------------------
+
     // 8. VERIFY GAME BELONGS TO ACTIVE WEEK WINDOW
+
     // --------------------------------------------------
+
+
 
     const gameKickoff =
+
       new Date(
+
         game.start_time
+
       ).getTime()
+
+
 
     const weekStart =
+
       new Date(
+
         week.starts_at
+
       ).getTime()
+
+
 
     const weekEnd =
+
       new Date(
+
         week.ends_at
+
       ).getTime()
 
+
+
     if (
+
       Number.isNaN(gameKickoff) ||
+
       Number.isNaN(weekStart) ||
+
       Number.isNaN(weekEnd)
+
     ) {
+
       return NextResponse.json(
+
         {
+
           success: false,
+
           error:
+
             'Invalid week or game date.',
+
         },
+
         {
+
           status: 500,
+
         }
+
       )
+
     }
 
+
+
     if (
+
       gameKickoff <
+
         weekStart ||
+
       gameKickoff >=
+
         weekEnd
+
     ) {
+
       return NextResponse.json(
+
         {
+
           success: false,
+
           error:
+
             'This game is outside the active week window.',
+
         },
+
         {
+
           status: 400,
+
         }
+
       )
+
     }
 
+
+
     // --------------------------------------------------
+
     // 9. BLOCK PICKS AFTER KICKOFF
+
     // --------------------------------------------------
+
+
 
     if (
+
       gameKickoff <=
+
       Date.now()
+
     ) {
+
       return NextResponse.json(
+
         {
+
           success: false,
+
           error:
+
             'This game has already started and can no longer be drafted.',
+
         },
+
         {
+
           status: 400,
+
         }
+
       )
+
     }
+
+
 
     if (game.completed) {
+
       return NextResponse.json(
+
         {
+
           success: false,
+
           error:
+
             'This game has already been completed.',
+
         },
+
         {
+
           status: 400,
+
         }
+
       )
+
     }
 
+
+
     // --------------------------------------------------
+
     // 10. VERIFY TEAM BELONGS TO GAME
+
     // --------------------------------------------------
 
+
+
     if (
+
       team !==
+
         game.home_team &&
+
       team !==
+
         game.away_team
+
     ) {
+
       return NextResponse.json(
+
         {
+
           success: false,
+
           error:
+
             'The selected team does not belong to this game.',
+
         },
+
         {
+
           status: 400,
+
         }
+
       )
+
     }
 
-    // --------------------------------------------------
-    // 11. ENFORCE FIRST-GAME-DAY RULE
-    //
-    // IMPORTANT:
-    // We find the earliest game in the ENTIRE week
-    // window, including games that already started
-    // or finished.
-    //
-    // This prevents Friday from suddenly becoming
-    // the "first game day" after Thursday has passed.
+
+
     // --------------------------------------------------
 
+    // 11. ENFORCE FIRST-GAME-DAY RULE
+
+    //
+
+    // IMPORTANT:
+
+    // We find the earliest game in the ENTIRE week
+
+    // window, including games that already started
+
+    // or finished.
+
+    //
+
+    // This prevents Friday from suddenly becoming
+
+    // the "first game day" after Thursday has passed.
+
+    // --------------------------------------------------
+
+
+
     if (
+
       !week.allow_later_day_games
+
     ) {
+
       const {
+
         data: firstWeekGame,
+
         error: firstWeekGameError,
+
       } = await supabase
+
         .from('games')
+
         .select(`
+
           id,
+
           start_time
+
         `)
+
         .gte(
+
           'start_time',
+
           week.starts_at
+
         )
+
         .lt(
+
           'start_time',
+
           week.ends_at
+
         )
+
         .order(
+
           'start_time',
+
           {
+
             ascending: true,
+
           }
+
         )
+
         .limit(1)
+
         .maybeSingle()
 
+
+
       if (firstWeekGameError) {
+
         throw new Error(
+
           firstWeekGameError.message
+
         )
+
       }
+
+
 
       if (!firstWeekGame) {
+
         return NextResponse.json(
+
           {
+
             success: false,
+
             error:
+
               'No games were found inside the active week window.',
+
           },
+
           {
+
             status: 400,
+
           }
+
         )
+
       }
+
+
 
       const firstGameDay =
+
         getEasternDateKey(
+
           firstWeekGame.start_time
+
         )
+
+
 
       const selectedGameDay =
+
         getEasternDateKey(
+
           game.start_time
+
         )
+
+
 
       if (
+
         selectedGameDay !==
+
         firstGameDay
+
       ) {
+
         return NextResponse.json(
+
           {
+
             success: false,
+
             error:
+
               'Later-day games are currently locked. Enable Allow Later-Day Games in Admin to draft this game.',
+
           },
+
           {
+
             status: 403,
+
           }
+
         )
+
       }
+
     }
 
-    // --------------------------------------------------
-    // 12. GET EXISTING PICKS
+
+
     // --------------------------------------------------
 
+    // 12. GET EXISTING PICKS
+
+    // --------------------------------------------------
+
+
+
     const {
+
       data: existingPicks,
+
       error: picksError,
+
     } = await supabase
+
       .from('picks')
+
       .select(`
+
         id,
+
         pick_number,
+
         player_id,
+
         game_id,
+
         is_automatic
+
       `)
+
       .eq(
+
         'week_id',
+
         week.id
+
       )
+
       .order(
+
         'pick_number'
+
       )
+
+
 
     if (picksError) {
+
       throw new Error(
+
         picksError.message
+
       )
+
     }
+
+
 
     const picks =
+
       existingPicks ?? []
 
+
+
     // --------------------------------------------------
+
     // 13. GAME CAN ONLY BE USED ONCE
+
     // --------------------------------------------------
+
+
 
     const gameAlreadyPicked =
+
       picks.some(
+
         (pick) =>
+
           pick.game_id ===
+
           game.id
+
       )
+
+
 
     if (
+
       gameAlreadyPicked
+
     ) {
+
       return NextResponse.json(
+
         {
+
           success: false,
+
           error:
+
             'This game has already been drafted.',
+
         },
+
         {
+
           status: 409,
+
         }
+
       )
+
     }
 
+
+
     // --------------------------------------------------
-    // 14. AUTOMATIC PICKS MUST EXIST FIRST
+
+    // 14. REQUIRED AUTOMATIC PICKS MUST EXIST FIRST
+
+    //
+
+    // A player's automatic pick is required only when
+
+    // that automatic team actually has a game inside
+
+    // this week's window. A bye week therefore does not
+
+    // block normal drafting.
+
+    //
+
+    // Normal picks still begin at pick #3 so #1 remains
+
+    // reserved for Geoff/Penn State and #2 remains
+
+    // reserved for General/Miami conceptually.
+
     // --------------------------------------------------
+
+
 
     const automaticPicks =
+
       picks.filter(
+
         (pick) =>
+
           pick.is_automatic
+
       )
 
-    if (
-      automaticPicks.length <
-      2
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            'The automatic Penn State and Miami picks must be created before normal drafting begins.',
-        },
-        {
-          status: 400,
-        }
-      )
-    }
 
-    // --------------------------------------------------
-    // 15. DETERMINE WHOSE TURN IT IS
-    // --------------------------------------------------
-
-    const normalPicks =
-      picks.filter(
-        (pick) =>
-          !pick.is_automatic
-      )
-
-    const nextPickNumber =
-      normalPicks.length +
-      3
-
-    const expectedPlayer =
-      normalPicks.length %
-        2 ===
-      0
-        ? firstPicker
-        : secondPicker
-
-    if (
-      loggedInPlayer.id !==
-      expectedPlayer.id
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            `It is ${expectedPlayer.name}'s turn. You are signed in as ${loggedInPlayer.name}.`,
-        },
-        {
-          status: 403,
-        }
-      )
-    }
-
-    // --------------------------------------------------
-    // 16. GET LATEST DRAFTKINGS SPREAD
-    // --------------------------------------------------
 
     const {
-      data: latestOdds,
-      error: oddsError,
+
+      data: weekGames,
+
+      error: weekGamesError,
+
     } = await supabase
-      .from('odds')
+
+      .from('games')
+
       .select(`
-        spread,
-        price,
-        fetched_at
-      `)
-      .eq(
-        'game_id',
-        game.id
-      )
-      .eq(
-        'team',
-        team
-      )
-      .eq(
-        'sportsbook',
-        'DraftKings'
-      )
-      .eq(
-        'market',
-        'spreads'
-      )
-      .order(
-        'fetched_at',
-        {
-          ascending: false,
-        }
-      )
-      .limit(1)
-      .maybeSingle()
 
-    if (oddsError) {
-      throw new Error(
-        oddsError.message
-      )
-    }
-
-    if (!latestOdds) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            'A current DraftKings spread could not be found for this team.',
-        },
-        {
-          status: 400,
-        }
-      )
-    }
-
-    const lockedSpread =
-      Number(
-        latestOdds.spread
-      )
-
-    if (
-      Number.isNaN(
-        lockedSpread
-      )
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            'The current DraftKings spread is invalid.',
-        },
-        {
-          status: 500,
-        }
-      )
-    }
-
-    // --------------------------------------------------
-    // 17. SAVE PICK
-    // --------------------------------------------------
-
-    const now =
-      new Date()
-        .toISOString()
-
-    const {
-      data: newPick,
-      error: insertError,
-    } = await supabase
-      .from('picks')
-      .insert({
-        week_id:
-          week.id,
-
-        player_id:
-          loggedInPlayer.id,
-
-        game_id:
-          game.id,
-
-        pick_number:
-          nextPickNumber,
-
-        team,
-
-        spread:
-          lockedSpread,
-
-        sportsbook:
-          'DraftKings',
-
-        is_automatic:
-          false,
-
-        result:
-          'pending',
-
-        lock_time:
-          now,
-
-        locked_spread:
-          lockedSpread,
-
-        line_locked:
-          true,
-
-        locked_at:
-          now,
-      })
-      .select(`
         id,
-        week_id,
-        player_id,
-        game_id,
-        pick_number,
-        team,
-        spread,
-        sportsbook,
-        is_automatic,
-        result,
-        locked_spread,
-        line_locked,
-        lock_time
-      `)
-      .single()
 
-    if (insertError) {
-      if (
-        insertError.code ===
-        '23505'
-      ) {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              'That pick was already taken. Refresh the draft board.',
-          },
-          {
-            status: 409,
-          }
-        )
-      }
+        home_team,
+
+        away_team,
+
+        start_time
+
+      `)
+
+      .gte(
+
+        'start_time',
+
+        week.starts_at
+
+      )
+
+      .lt(
+
+        'start_time',
+
+        week.ends_at
+
+      )
+
+
+
+    if (weekGamesError) {
 
       throw new Error(
-        insertError.message
+
+        weekGamesError.message
+
       )
+
     }
 
-    // --------------------------------------------------
-    // 18. DETERMINE NEXT PLAYER
-    // --------------------------------------------------
 
-    const nextPlayer =
-      expectedPlayer.id ===
-      firstPicker.id
-        ? secondPicker
-        : firstPicker
 
-    // --------------------------------------------------
-    // 19. SEND PUSH NOTIFICATION
-    //
-    // Push failure must NEVER undo a valid pick.
-    // --------------------------------------------------
+    const playersRequiringAutomaticPick =
 
-    let pushSent = 0
-    let pushFailed = 0
+      players.filter(
 
-    try {
-      const {
-        data: subscriptions,
-        error:
-          subscriptionError,
-      } = await supabase
-        .from(
-          'push_subscriptions'
-        )
-        .select(`
-          id,
-          endpoint,
-          p256dh,
-          auth
-        `)
-        .eq(
-          'player_id',
-          nextPlayer.id
-        )
+        (player) =>
 
-      if (
-        subscriptionError
-      ) {
-        console.error(
-          'Unable to load push subscriptions:',
-          subscriptionError.message
-        )
-      } else if (
-        subscriptions &&
-        subscriptions.length >
-          0
-      ) {
-        configureWebPush()
+          (weekGames ?? []).some(
 
-        const spreadText =
-          lockedSpread > 0
-            ? `+${lockedSpread}`
-            : `${lockedSpread}`
+            (weekGame) =>
 
-        const payload =
-          JSON.stringify({
-            title:
-              'Spread Wars',
+              matchesAutomaticTeam(
 
-            body:
-              `${loggedInPlayer.name} picked ${team} ${spreadText}. ${nextPlayer.name}, you're on the clock.`,
+                player.automatic_team,
 
-            url:
-              '/',
-          })
+                weekGame.home_team
 
-        for (
-          const subscription of
-          subscriptions
-        ) {
-          try {
-            await webpush
-              .sendNotification(
-                {
-                  endpoint:
-                    subscription.endpoint,
+              ) ||
 
-                  keys: {
-                    p256dh:
-                      subscription.p256dh,
+              matchesAutomaticTeam(
 
-                    auth:
-                      subscription.auth,
-                  },
-                },
-                payload
+                player.automatic_team,
+
+                weekGame.away_team
+
               )
 
-            pushSent++
-          } catch (
-            pushError: any
-          ) {
-            pushFailed++
+          )
 
-            console.error(
-              'Push notification failed:',
-              pushError
-            )
-
-            if (
-              pushError?.statusCode ===
-                404 ||
-              pushError?.statusCode ===
-                410
-            ) {
-              await supabase
-                .from(
-                  'push_subscriptions'
-                )
-                .delete()
-                .eq(
-                  'id',
-                  subscription.id
-                )
-            }
-          }
-        }
-      }
-    } catch (pushError) {
-      console.error(
-        'Push notification system error:',
-        pushError
       )
+
+
+
+    const missingAutomaticPlayers =
+
+      playersRequiringAutomaticPick.filter(
+
+        (player) =>
+
+          !automaticPicks.some(
+
+            (pick) =>
+
+              pick.player_id ===
+
+              player.id
+
+          )
+
+      )
+
+
+
+    if (
+
+      missingAutomaticPlayers.length >
+
+      0
+
+    ) {
+
+      const missingNames =
+
+        missingAutomaticPlayers
+
+          .map(
+
+            (player) =>
+
+              `${player.name} (${player.automatic_team})`
+
+          )
+
+          .join(', ')
+
+
+
+      return NextResponse.json(
+
+        {
+
+          success: false,
+
+          error:
+
+            `Required automatic pick(s) must be created before normal drafting begins: ${missingNames}.`,
+
+        },
+
+        {
+
+          status: 400,
+
+        }
+
+      )
+
     }
 
+
+
     // --------------------------------------------------
-    // 20. RESPONSE
+
+    // 15. DETERMINE WHOSE TURN IT IS
+
     // --------------------------------------------------
 
-    const spreadText =
-      lockedSpread > 0
-        ? `+${lockedSpread}`
-        : `${lockedSpread}`
 
-    return NextResponse.json({
-      success: true,
 
-      message:
-        `${loggedInPlayer.name} drafted ${team} ${spreadText}`,
+    const normalPicks =
 
-      pick:
-        newPick,
+      picks.filter(
 
-      nextPlayer: {
-        id:
-          nextPlayer.id,
+        (pick) =>
 
-        name:
-          nextPlayer.name,
-      },
+          !pick.is_automatic
 
-      push: {
-        sent:
-          pushSent,
+      )
 
-        failed:
-          pushFailed,
-      },
-    })
-  } catch (error) {
-    console.error(
-      'POST /api/picks error:',
-      error
-    )
 
-    return NextResponse.json(
-      {
-        success: false,
+
+    const nextPickNumber =
+
+      normalPicks.length +
+
+      3
+
+
+
+    const expectedPlayer =
+
+      normalPicks.length %
+
+        2 ===
+
+      0
+
+        ? firstPicker
+
+        : secondPicker
+
+
+
+    if (
+
+      loggedInPlayer.id !==
+
+      expectedPlayer.id
+
+    ) {
+
+      return NextResponse.json(
+
+        {
+
+          success: false,
+
+          error:
+
+            `It is ${expectedPlayer.name}'s turn. You are signed in as ${loggedInPlayer.name}.`,
+
+        },
+
+        {
+
+          status: 403,
+
+        }
+
+      )
+
+    }
+
+
+
+    // --------------------------------------------------
+
+    // 16. GET LATEST DRAFTKINGS SPREAD
+
+    // --------------------------------------------------
+
+
+
+    const {
+
+      data: latestOdds,
+
+      error: oddsError,
+
+    } = await supabase
+
+      .from('odds')
+
+      .select(`
+
+        spread,
+
+        price,
+
+        fetched_at
+
+      `)
+
+      .eq(
+
+        'game_id',
+
+        game.id
+
+      )
+
+      .eq(
+
+        'team',
+
+        team
+
+      )
+
+      .eq(
+
+        'sportsbook',
+
+        'DraftKings'
+
+      )
+
+      .eq(
+
+        'market',
+
+        'spreads'
+
+      )
+
+      .order(
+
+        'fetched_at',
+
+        {
+
+          ascending: false,
+
+        }
+
+      )
+
+      .limit(1)
+
+      .maybeSingle()
+
+
+
+    if (oddsError) {
+
+      throw new Error(
+
+        oddsError.message
+
+      )
+
+    }
+
+
+
+    if (!latestOdds) {
+
+      return NextResponse.json(
+
+        {
+
+          success: false,
+
+          error:
+
+            'A current DraftKings spread could not be found for this team.',
+
+        },
+
+        {
+
+          status: 400,
+
+        }
+
+      )
+
+    }
+
+
+
+    const lockedSpread =
+
+      Number(
+
+        latestOdds.spread
+
+      )
+
+
+
+    if (
+
+      Number.isNaN(
+
+        lockedSpread
+
+      )
+
+    ) {
+
+      return NextResponse.json(
+
+        {
+
+          success: false,
+
+          error:
+
+            'The current DraftKings spread is invalid.',
+
+        },
+
+        {
+
+          status: 500,
+
+        }
+
+      )
+
+    }
+
+
+
+    // --------------------------------------------------
+
+    // 17. SAVE PICK
+
+    // --------------------------------------------------
+
+
+
+    const now =
+
+      new Date()
+
+        .toISOString()
+
+
+
+    const {
+
+      data: newPick,
+
+      error: insertError,
+
+    } = await supabase
+
+      .from('picks')
+
+      .insert({
+
+        week_id:
+
+          week.id,
+
+
+
+        player_id:
+
+          loggedInPlayer.id,
+
+
+
+        game_id:
+
+          game.id,
+
+
+
+        pick_number:
+
+          nextPickNumber,
+
+
+
+        team,
+
+
+
+        spread:
+
+          lockedSpread,
+
+
+
+        sportsbook:
+
+          'DraftKings',
+
+
+
+        is_automatic:
+
+          false,
+
+
+
+        result:
+
+          'pending',
+
+
+
+        lock_time:
+
+          now,
+
+
+
+        locked_spread:
+
+          lockedSpread,
+
+
+
+        line_locked:
+
+          true,
+
+
+
+        locked_at:
+
+          now,
+
+      })
+
+      .select(`
+
+        id,
+
+        week_id,
+
+        player_id,
+
+        game_id,
+
+        pick_number,
+
+        team,
+
+        spread,
+
+        sportsbook,
+
+        is_automatic,
+
+        result,
+
+        locked_spread,
+
+        line_locked,
+
+        lock_time
+
+      `)
+
+      .single()
+
+
+
+    if (insertError) {
+
+      if (
+
+        insertError.code ===
+
+        '23505'
+
+      ) {
+
+        return NextResponse.json(
+
+          {
+
+            success: false,
+
+            error:
+
+              'That pick was already taken. Refresh the draft board.',
+
+          },
+
+          {
+
+            status: 409,
+
+          }
+
+        )
+
+      }
+
+
+
+      throw new Error(
+
+        insertError.message
+
+      )
+
+    }
+
+
+
+    // --------------------------------------------------
+
+    // 18. DETERMINE NEXT PLAYER
+
+    // --------------------------------------------------
+
+
+
+    const nextPlayer =
+
+      expectedPlayer.id ===
+
+      firstPicker.id
+
+        ? secondPicker
+
+        : firstPicker
+
+
+
+    // --------------------------------------------------
+
+    // 19. SEND PUSH NOTIFICATION
+
+    //
+
+    // Push failure must NEVER undo a valid pick.
+
+    // --------------------------------------------------
+
+
+
+    let pushSent = 0
+
+    let pushFailed = 0
+
+
+
+    try {
+
+      const {
+
+        data: subscriptions,
 
         error:
-          error instanceof Error
-            ? error.message
-            : 'Unknown error while making pick.',
-      },
-      {
-        status: 500,
+
+          subscriptionError,
+
+      } = await supabase
+
+        .from(
+
+          'push_subscriptions'
+
+        )
+
+        .select(`
+
+          id,
+
+          endpoint,
+
+          p256dh,
+
+          auth
+
+        `)
+
+        .eq(
+
+          'player_id',
+
+          nextPlayer.id
+
+        )
+
+
+
+      if (
+
+        subscriptionError
+
+      ) {
+
+        console.error(
+
+          'Unable to load push subscriptions:',
+
+          subscriptionError.message
+
+        )
+
+      } else if (
+
+        subscriptions &&
+
+        subscriptions.length >
+
+          0
+
+      ) {
+
+        configureWebPush()
+
+
+
+        const spreadText =
+
+          lockedSpread > 0
+
+            ? `+${lockedSpread}`
+
+            : `${lockedSpread}`
+
+
+
+        const payload =
+
+          JSON.stringify({
+
+            title:
+
+              'Spread Wars',
+
+
+
+            body:
+
+              `${loggedInPlayer.name} picked ${team} ${spreadText}. ${nextPlayer.name}, you're on the clock.`,
+
+
+
+            url:
+
+              '/',
+
+          })
+
+
+
+        for (
+
+          const subscription of
+
+          subscriptions
+
+        ) {
+
+          try {
+
+            await webpush
+
+              .sendNotification(
+
+                {
+
+                  endpoint:
+
+                    subscription.endpoint,
+
+
+
+                  keys: {
+
+                    p256dh:
+
+                      subscription.p256dh,
+
+
+
+                    auth:
+
+                      subscription.auth,
+
+                  },
+
+                },
+
+                payload
+
+              )
+
+
+
+            pushSent++
+
+          } catch (
+
+            pushError: any
+
+          ) {
+
+            pushFailed++
+
+
+
+            console.error(
+
+              'Push notification failed:',
+
+              pushError
+
+            )
+
+
+
+            if (
+
+              pushError?.statusCode ===
+
+                404 ||
+
+              pushError?.statusCode ===
+
+                410
+
+            ) {
+
+              await supabase
+
+                .from(
+
+                  'push_subscriptions'
+
+                )
+
+                .delete()
+
+                .eq(
+
+                  'id',
+
+                  subscription.id
+
+                )
+
+            }
+
+          }
+
+        }
+
       }
+
+    } catch (pushError) {
+
+      console.error(
+
+        'Push notification system error:',
+
+        pushError
+
+      )
+
+    }
+
+
+
+    // --------------------------------------------------
+
+    // 20. RESPONSE
+
+    // --------------------------------------------------
+
+
+
+    const spreadText =
+
+      lockedSpread > 0
+
+        ? `+${lockedSpread}`
+
+        : `${lockedSpread}`
+
+
+
+    return NextResponse.json({
+
+      success: true,
+
+
+
+      message:
+
+        `${loggedInPlayer.name} drafted ${team} ${spreadText}`,
+
+
+
+      pick:
+
+        newPick,
+
+
+
+      nextPlayer: {
+
+        id:
+
+          nextPlayer.id,
+
+
+
+        name:
+
+          nextPlayer.name,
+
+      },
+
+
+
+      push: {
+
+        sent:
+
+          pushSent,
+
+
+
+        failed:
+
+          pushFailed,
+
+      },
+
+    })
+
+  } catch (error) {
+
+    console.error(
+
+      'POST /api/picks error:',
+
+      error
+
     )
+
+
+
+    return NextResponse.json(
+
+      {
+
+        success: false,
+
+
+
+        error:
+
+          error instanceof Error
+
+            ? error.message
+
+            : 'Unknown error while making pick.',
+
+      },
+
+      {
+
+        status: 500,
+
+      }
+
+    )
+
   }
+
 }
