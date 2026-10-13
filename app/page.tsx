@@ -7,6 +7,7 @@ type Player = {
   id: string
   name: string
   automatic_team: string
+  ai_analysis_enabled: boolean
 }
 
 type Pick = {
@@ -54,6 +55,18 @@ type DraftGame = {
     price: number | null
     fetched_at: string
   }[]
+}
+
+type AIAnalysis = {
+  game_id: string
+  recommended_team: string
+  confidence:
+    | 'low'
+    | 'medium'
+    | 'high'
+  analyzed_spread: number
+  rationale: string
+  analyzed_at: string
 }
 
 type ApprovedAdjustment = {
@@ -297,7 +310,8 @@ export default async function HomePage() {
     .select(`
       id,
       name,
-      automatic_team
+      automatic_team,
+      ai_analysis_enabled
     `)
     .eq(
       'auth_user_id',
@@ -338,7 +352,8 @@ export default async function HomePage() {
     .select(`
       id,
       name,
-      automatic_team
+      automatic_team,
+      ai_analysis_enabled
     `)
     .order('name')
 
@@ -747,6 +762,68 @@ export default async function HomePage() {
             ),
       })
     )
+
+  // --------------------------------------------------
+  // AI ANALYSIS FOR THIS PLAYER
+  // --------------------------------------------------
+
+  let aiAnalyses:
+    AIAnalysis[] = []
+
+  if (
+    loggedInPlayer
+      .ai_analysis_enabled &&
+    futureGameIds.length > 0
+  ) {
+    const {
+      data:
+        aiAnalysisData,
+      error:
+        aiAnalysisError,
+    } = await supabase
+      .from(
+        'ai_game_analysis'
+      )
+      .select(`
+        game_id,
+        recommended_team,
+        confidence,
+        analyzed_spread,
+        rationale,
+        analyzed_at
+      `)
+      .eq(
+        'week_id',
+        week.id
+      )
+      .in(
+        'game_id',
+        futureGameIds
+      )
+
+    if (
+      aiAnalysisError
+    ) {
+      throw new Error(
+        aiAnalysisError.message
+      )
+    }
+
+    aiAnalyses =
+      (
+        aiAnalysisData ??
+        []
+      ).map(
+        (analysis) => ({
+          ...analysis,
+          analyzed_spread:
+            Number(
+              analysis
+                .analyzed_spread
+            ),
+        })
+      ) as AIAnalysis[]
+  }
 
   // --------------------------------------------------
   // DRAFT ORDER
@@ -1180,6 +1257,9 @@ export default async function HomePage() {
               }
               firstGameDayLabel={
                 firstGameDayLabel
+              }
+              aiAnalyses={
+                aiAnalyses
               }
             />
 

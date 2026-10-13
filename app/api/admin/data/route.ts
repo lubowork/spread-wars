@@ -27,7 +27,7 @@ export async function GET() {
       error: playerError,
     } = await supabaseAdmin
       .from('players')
-      .select('id, name')
+      .select('id, name, ai_analysis_enabled')
       .eq('auth_user_id', user.id)
       .single()
 
@@ -120,6 +120,9 @@ export async function GET() {
       loggedInPlayer: {
         id: loggedInPlayer.id,
         name: loggedInPlayer.name,
+        ai_analysis_enabled:
+          loggedInPlayer.ai_analysis_enabled ??
+          false,
       },
 
       players: players ?? [],
