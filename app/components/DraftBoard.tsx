@@ -43,18 +43,6 @@ type PendingPick = {
   spread: number
 }
 
-type AIAnalysis = {
-  game_id: string
-  recommended_team: string
-  confidence:
-    | 'low'
-    | 'medium'
-    | 'high'
-  analyzed_spread: number
-  rationale: string
-  analyzed_at: string
-}
-
 type Props = {
   players: Player[]
   games: Game[]
@@ -65,7 +53,6 @@ type Props = {
   allowLaterDayGames: boolean
   firstGameDayKey: string | null
   firstGameDayLabel: string | null
-  aiAnalyses: AIAnalysis[]
 }
 
 const AUTOMATIC_WAKE_HOURS_BEFORE_KICKOFF = 12
@@ -198,29 +185,6 @@ function getOddsSyncIntervalMinutes(
   return 30
 }
 
-function confidenceThumbs(
-  confidence:
-    | 'low'
-    | 'medium'
-    | 'high'
-) {
-  if (
-    confidence ===
-    'high'
-  ) {
-    return '👍👍👍'
-  }
-
-  if (
-    confidence ===
-    'medium'
-  ) {
-    return '👍👍'
-  }
-
-  return '👍'
-}
-
 function roundUpToNextCronSlot(
   date: Date
 ) {
@@ -260,7 +224,6 @@ export default function DraftBoard({
   allowLaterDayGames,
   firstGameDayKey,
   firstGameDayLabel,
-  aiAnalyses,
 }: Props) {
   const [
     currentPicks,
@@ -1450,23 +1413,6 @@ export default function DraftBoard({
                     game.home_team
                   )
 
-                const analysis =
-                  aiAnalyses.find(
-                    (item) =>
-                      item.game_id ===
-                      game.id
-                  )
-
-                const awayRecommended =
-                  analysis
-                    ?.recommended_team ===
-                  game.away_team
-
-                const homeRecommended =
-                  analysis
-                    ?.recommended_team ===
-                  game.home_team
-
                 return (
                   <div
                     key={
@@ -1499,10 +1445,6 @@ export default function DraftBoard({
                           )
                         }
                         className={`rounded-xl border p-4 text-left transition ${
-                          awayRecommended
-                            ? 'ring-2 ring-emerald-500/70 '
-                            : ''
-                        }${
                           isMyTurn &&
                           awayOdds &&
                           !submitting
@@ -1515,26 +1457,10 @@ export default function DraftBoard({
                           Away
                         </div>
 
-                        <div className="mt-1 flex items-center justify-between gap-3">
-
-                          <div className="font-bold">
-                            {
-                              game.away_team
-                            }
-                          </div>
-
-                          {awayRecommended &&
-                            analysis && (
-                              <div
-                                className="shrink-0 rounded-full border border-emerald-600/60 bg-emerald-950/60 px-2 py-1 text-sm"
-                                title={`AI recommendation · ${analysis.confidence} confidence · analyzed at ${formatSpread(analysis.analyzed_spread)}`}
-                              >
-                                {confidenceThumbs(
-                                  analysis.confidence
-                                )}
-                              </div>
-                            )}
-
+                        <div className="mt-1 font-bold">
+                          {
+                            game.away_team
+                          }
                         </div>
 
                         <div className="mt-2 text-2xl font-black text-cyan-300">
@@ -1565,10 +1491,6 @@ export default function DraftBoard({
                           )
                         }
                         className={`rounded-xl border p-4 text-left transition ${
-                          homeRecommended
-                            ? 'ring-2 ring-emerald-500/70 '
-                            : ''
-                        }${
                           isMyTurn &&
                           homeOdds &&
                           !submitting
@@ -1581,26 +1503,10 @@ export default function DraftBoard({
                           Home
                         </div>
 
-                        <div className="mt-1 flex items-center justify-between gap-3">
-
-                          <div className="font-bold">
-                            {
-                              game.home_team
-                            }
-                          </div>
-
-                          {homeRecommended &&
-                            analysis && (
-                              <div
-                                className="shrink-0 rounded-full border border-emerald-600/60 bg-emerald-950/60 px-2 py-1 text-sm"
-                                title={`AI recommendation · ${analysis.confidence} confidence · analyzed at ${formatSpread(analysis.analyzed_spread)}`}
-                              >
-                                {confidenceThumbs(
-                                  analysis.confidence
-                                )}
-                              </div>
-                            )}
-
+                        <div className="mt-1 font-bold">
+                          {
+                            game.home_team
+                          }
                         </div>
 
                         <div className="mt-2 text-2xl font-black text-cyan-300">
