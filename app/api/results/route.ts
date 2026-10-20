@@ -540,11 +540,10 @@ function getAutomaticSlot(
   // --------------------------------------------------
   // SUNDAY 2:00 AM
   //
-  // Final automatic check for Saturday's slate.
+  // Main overnight automatic check for Saturday's slate.
   //
   // Keep the slot open until 5:00 AM ET so a delayed
-  // Cron execution still has time to perform the final
-  // Saturday grading pass.
+  // Cron execution still has time to perform the pass.
   // --------------------------------------------------
 
   if (
@@ -554,14 +553,20 @@ function getAutomaticSlot(
     const SLOT_200 =
       2 * 60
 
-    const SLOT_END =
+    const SLOT_500 =
       5 * 60
+
+    const SLOT_600 =
+      6 * 60
+
+    const SLOT_900 =
+      9 * 60
 
     if (
       clockMinutes >=
         SLOT_200 &&
       clockMinutes <
-        SLOT_END
+        SLOT_500
     ) {
       const saturdayGames =
         getSaturdayGames(
@@ -591,7 +596,65 @@ function getAutomaticSlot(
             `${saturdayDate}-02:00-sunday-final`,
 
           description:
-            'Sunday 2:00 AM ET final Saturday score check.',
+            'Sunday 2:00 AM ET Saturday score check.',
+
+          candidateGameIds:
+            maturedSaturdayGames.map(
+              (game) =>
+                game.id
+            ),
+        }
+      }
+    }
+
+    // ------------------------------------------------
+    // SUNDAY 6:00 AM MOP-UP
+    //
+    // Late Saturday games can still be unfinished or
+    // not yet marked completed by the provider during
+    // the 2:00 AM pass. This second window catches any
+    // remaining matured Saturday games without needing
+    // a manual Grade Results click.
+    //
+    // Keep the slot open until 9:00 AM ET so a delayed
+    // Cron execution can still use the mop-up pass.
+    // ------------------------------------------------
+
+    if (
+      clockMinutes >=
+        SLOT_600 &&
+      clockMinutes <
+        SLOT_900
+    ) {
+      const saturdayGames =
+        getSaturdayGames(
+          pendingGames
+        )
+
+      const maturedSaturdayGames =
+        saturdayGames.filter(
+          (game) =>
+            isMatureEnough(
+              game,
+              now
+            )
+        )
+
+      if (
+        maturedSaturdayGames.length >
+        0
+      ) {
+        const saturdayDate =
+          getPreviousDateKey(
+            nowParts.dateKey
+          )
+
+        return {
+          key:
+            `${saturdayDate}-06:00-sunday-mopup`,
+
+          description:
+            'Sunday 6:00 AM ET Saturday score mop-up check.',
 
           candidateGameIds:
             maturedSaturdayGames.map(
@@ -778,7 +841,7 @@ export async function POST(
             'No automatic scoring window is active right now. No Scores API credits used.',
 
           schedule:
-            'Saturday: 3:30 PM, 7:30 PM, 10:30 PM ET; Sunday: 2:00 AM ET final Saturday check; non-Saturday games: 5:00 AM ET the following morning.',
+            'Saturday: 3:30 PM, 7:30 PM, 10:30 PM ET; Sunday: 2:00 AM ET Saturday check plus a 6:00 AM ET mop-up; non-Saturday games: 5:00 AM ET the following morning.',
         })
       }
 
