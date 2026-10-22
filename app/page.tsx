@@ -61,6 +61,7 @@ type ApprovedAdjustment = {
   wins_delta: number
   losses_delta: number
   pushes_delta: number
+  reason: string
 }
 
 function calculateRecord(
@@ -534,7 +535,8 @@ export default async function HomePage() {
       target_player_id,
       wins_delta,
       losses_delta,
-      pushes_delta
+      pushes_delta,
+      reason
     `)
     .eq(
       'week_id',
@@ -552,8 +554,16 @@ export default async function HomePage() {
   }
 
   const adjustments =
-    (adjustmentsData ??
-      []) as ApprovedAdjustment[]
+    (
+      (adjustmentsData ?? []) as ApprovedAdjustment[]
+    ).filter(
+      (adjustment) =>
+        !adjustment.reason
+          ?.toUpperCase()
+          .startsWith(
+            'BUYBACK:'
+          )
+    )
 
   // --------------------------------------------------
   // ALL GAMES IN ACTIVE WEEK
