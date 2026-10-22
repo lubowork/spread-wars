@@ -172,6 +172,10 @@ export async function GET() {
             'reason',
             'BUYBACK:%'
           )
+          .gte(
+            'created_at',
+            '2026-10-22T15:44:12.000Z'
+          )
           .order(
             'created_at',
             {
