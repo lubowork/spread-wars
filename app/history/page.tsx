@@ -46,6 +46,7 @@ type Adjustment = {
   losses_delta: number
   pushes_delta: number
   reason: string
+  created_at: string
 }
 
 type Record = {
@@ -948,7 +949,8 @@ export default async function HistoryPage({
         wins_delta,
         losses_delta,
         pushes_delta,
-        reason
+        reason,
+        created_at
       `)
       .in(
         'week_id',
@@ -974,6 +976,11 @@ export default async function HistoryPage({
       ) as Adjustment[]
   }
 
+  const BUY_BACK_LIVE_START =
+    new Date(
+      '2026-10-22T15:44:12.000Z'
+    ).getTime()
+
   const buyBacks =
     adjustments.filter(
       (adjustment) =>
@@ -981,7 +988,11 @@ export default async function HistoryPage({
           ?.toUpperCase()
           .startsWith(
             'BUYBACK:'
-          )
+          ) &&
+        new Date(
+          adjustment.created_at
+        ).getTime() >=
+          BUY_BACK_LIVE_START
     )
 
   const recordAdjustments =
