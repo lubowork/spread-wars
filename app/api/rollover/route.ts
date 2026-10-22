@@ -475,7 +475,8 @@ export async function POST() {
         target_player_id,
         wins_delta,
         losses_delta,
-        pushes_delta
+        pushes_delta,
+        reason
       `)
       .eq(
         'week_id',
@@ -537,7 +538,12 @@ export async function POST() {
                 adjustment
               ) =>
                 adjustment.target_player_id ===
-                player.id
+                  player.id &&
+                !adjustment.reason
+                  ?.toUpperCase()
+                  .startsWith(
+                    'BUYBACK:'
+                  )
             )
 
           for (
