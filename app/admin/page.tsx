@@ -45,6 +45,16 @@ type Adjustment = {
   adjustment_votes: Vote[]
 }
 
+type BuyBack = {
+  id: string
+  target_player_id: string
+  requested_by_player_id: string
+  wins_delta: number
+  reason: string
+  status: string
+  created_at: string
+}
+
 function isoToLocalInput(
   iso: string | null
 ) {
@@ -89,6 +99,24 @@ export default function AdminPage() {
     setAdjustments,
   ] =
     useState<Adjustment[]>([])
+
+  const [
+    buyBacks,
+    setBuyBacks,
+  ] =
+    useState<BuyBack[]>([])
+
+  const [
+    buyBackPlayerId,
+    setBuyBackPlayerId,
+  ] =
+    useState('')
+
+  const [
+    buyBackAmount,
+    setBuyBackAmount,
+  ] =
+    useState(0)
 
   const [
     targetPlayerId,
@@ -194,6 +222,10 @@ export default function AdminPage() {
         data.adjustments ?? []
       )
 
+      setBuyBacks(
+        data.buyBacks ?? []
+      )
+
       if (data.week) {
         setWeekStartsAt(
           isoToLocalInput(
@@ -218,6 +250,12 @@ export default function AdminPage() {
         data.players?.length > 0
       ) {
         setTargetPlayerId(
+          (current) =>
+            current ||
+            data.players[0].id
+        )
+
+        setBuyBackPlayerId(
           (current) =>
             current ||
             data.players[0].id
@@ -470,6 +508,113 @@ export default function AdminPage() {
         error instanceof Error
           ? error.message
           : 'Unable to update week settings.'
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function submitBuyBack(
+    event: FormEvent
+  ) {
+    event.preventDefault()
+
+    if (!week) {
+      setMessage(
+        'No active week was found.'
+      )
+
+      return
+    }
+
+    if (
+      !buyBackPlayerId ||
+      !Number.isInteger(
+        Number(
+          buyBackAmount
+        )
+      ) ||
+      Number(
+        buyBackAmount
+      ) <= 0
+    ) {
+      setMessage(
+        'Enter a positive whole-number Buy Back amount.'
+      )
+
+      return
+    }
+
+    try {
+      setLoading(true)
+      setMessage('')
+
+      const response =
+        await fetch(
+          '/api/admin/buy-back',
+          {
+            method: 'POST',
+
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+
+            body:
+              JSON.stringify({
+                weekId:
+                  week.id,
+
+                targetPlayerId:
+                  buyBackPlayerId,
+
+                amount:
+                  Number(
+                    buyBackAmount
+                  ),
+              }),
+          }
+        )
+
+      const responseText =
+        await response.text()
+
+      let data: any
+
+      try {
+        data =
+          JSON.parse(
+            responseText
+          )
+      } catch {
+        throw new Error(
+          `Unexpected response (${response.status}).`
+        )
+      }
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            'Unable to add Buy Back.'
+        )
+      }
+
+      setBuyBackAmount(0)
+
+      setMessage(
+        data.message ||
+          'Buy Back added.'
+      )
+
+      await loadData()
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Unable to add Buy Back.'
       )
     } finally {
       setLoading(false)
@@ -981,6 +1126,168 @@ export default function AdminPage() {
             </p>
 
           </div>
+
+        </section>
+
+        {/* BUY BACK */}
+
+        <section className="mb-6 rounded-2xl border border-amber-700/60 bg-amber-950/20 p-5 sm:p-6">
+
+          <h2 className="text-xl font-black text-amber-300">
+            Buy Back
+          </h2>
+
+          <p className="mt-2 text-sm text-slate-300">
+            Buy Backs change only the Overall Tally. They do not change either player&apos;s Head-to-Head Season Record.
+          </p>
+
+          <div className="mt-3 rounded-xl border border-amber-800/50 bg-slate-950/40 p-4 text-sm text-amber-100/80">
+            Example: entering 4 for Geoff moves the Overall Tally 4 points toward Geoff. If General is +54, it becomes General +50.
+          </div>
+
+          <form
+            onSubmit={
+              submitBuyBack
+            }
+            className="mt-6 grid gap-4 md:grid-cols-[minmax(0,1fr)_180px_auto] md:items-end"
+          >
+
+            <div>
+
+              <label className="mb-2 block text-sm font-bold text-slate-300">
+                Player
+              </label>
+
+              <select
+                value={
+                  buyBackPlayerId
+                }
+                onChange={(
+                  event
+                ) =>
+                  setBuyBackPlayerId(
+                    event.target.value
+                  )
+                }
+                className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
+              >
+
+                {players.map(
+                  (player) => (
+                    <option
+                      key={
+                        player.id
+                      }
+                      value={
+                        player.id
+                      }
+                    >
+                      {
+                        player.name
+                      }
+                    </option>
+                  )
+                )}
+
+              </select>
+
+            </div>
+
+            <div>
+
+              <label className="mb-2 block text-sm font-bold text-slate-300">
+                Buy Back Amount
+              </label>
+
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={
+                  buyBackAmount
+                }
+                onChange={(
+                  event
+                ) =>
+                  setBuyBackAmount(
+                    Number(
+                      event.target.value
+                    )
+                  )
+                }
+                className="w-full rounded-xl border border-slate-700 bg-white px-4 py-3 text-slate-950"
+              />
+
+            </div>
+
+            <button
+              type="submit"
+              disabled={
+                loading ||
+                !week
+              }
+              className="rounded-xl bg-amber-400 px-5 py-3 font-black text-slate-950 hover:bg-amber-300 disabled:opacity-50"
+            >
+              Add Buy Back
+            </button>
+
+          </form>
+
+          {buyBacks.length > 0 && (
+            <div className="mt-6">
+
+              <div className="mb-3 text-sm font-black uppercase tracking-wide text-amber-200/70">
+                Season Buy Backs
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+
+                {players.map(
+                  (player) => {
+                    const total =
+                      buyBacks
+                        .filter(
+                          (buyBack) =>
+                            buyBack.target_player_id ===
+                            player.id
+                        )
+                        .reduce(
+                          (
+                            sum,
+                            buyBack
+                          ) =>
+                            sum +
+                            (Number(
+                              buyBack.wins_delta
+                            ) || 0),
+                          0
+                        )
+
+                    return (
+                      <div
+                        key={
+                          player.id
+                        }
+                        className="rounded-xl border border-amber-900/50 bg-slate-950/50 p-4"
+                      >
+
+                        <div className="text-sm text-slate-400">
+                          {player.name}
+                        </div>
+
+                        <div className="mt-1 text-2xl font-black text-amber-300">
+                          +{total}
+                        </div>
+
+                      </div>
+                    )
+                  }
+                )}
+
+              </div>
+
+            </div>
+          )}
 
         </section>
 

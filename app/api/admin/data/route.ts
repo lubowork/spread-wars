@@ -61,6 +61,7 @@ export async function GET() {
       .from('weeks')
       .select(`
         id,
+        season_id,
         week_number,
         status,
         starts_at,
@@ -79,6 +80,7 @@ export async function GET() {
     }
 
     let adjustments: any[] = []
+    let buyBacks: any[] = []
 
     if (week) {
       const {
@@ -111,7 +113,79 @@ export async function GET() {
         throw adjustmentsError
       }
 
-      adjustments = adjustmentData ?? []
+      adjustments =
+        (adjustmentData ?? []).filter(
+          (adjustment: any) =>
+            !adjustment.reason
+              ?.toUpperCase()
+              .startsWith(
+                'BUYBACK:'
+              )
+        )
+
+      const {
+        data: seasonWeeks,
+        error: seasonWeeksError,
+      } = await supabaseAdmin
+        .from('weeks')
+        .select('id')
+        .eq(
+          'season_id',
+          week.season_id
+        )
+
+      if (seasonWeeksError) {
+        throw seasonWeeksError
+      }
+
+      const seasonWeekIds =
+        (seasonWeeks ?? []).map(
+          (seasonWeek) =>
+            seasonWeek.id
+        )
+
+      if (seasonWeekIds.length > 0) {
+        const {
+          data: buyBackData,
+          error: buyBackError,
+        } = await supabaseAdmin
+          .from('result_adjustments')
+          .select(`
+            id,
+            week_id,
+            target_player_id,
+            requested_by_player_id,
+            wins_delta,
+            reason,
+            status,
+            created_at
+          `)
+          .in(
+            'week_id',
+            seasonWeekIds
+          )
+          .eq(
+            'status',
+            'approved'
+          )
+          .ilike(
+            'reason',
+            'BUYBACK:%'
+          )
+          .order(
+            'created_at',
+            {
+              ascending: false,
+            }
+          )
+
+        if (buyBackError) {
+          throw buyBackError
+        }
+
+        buyBacks =
+          buyBackData ?? []
+      }
     }
 
     return NextResponse.json({
@@ -127,6 +201,8 @@ export async function GET() {
       week: week
         ? {
             id: week.id,
+            season_id:
+              week.season_id,
             week_number:
               week.week_number,
             status:
@@ -142,6 +218,7 @@ export async function GET() {
         : null,
 
       adjustments,
+      buyBacks,
     })
   } catch (error) {
     console.error(

@@ -45,6 +45,7 @@ type Adjustment = {
   wins_delta: number
   losses_delta: number
   pushes_delta: number
+  reason: string
 }
 
 type Record = {
@@ -946,7 +947,8 @@ export default async function HistoryPage({
         target_player_id,
         wins_delta,
         losses_delta,
-        pushes_delta
+        pushes_delta,
+        reason
       `)
       .in(
         'week_id',
@@ -972,6 +974,26 @@ export default async function HistoryPage({
       ) as Adjustment[]
   }
 
+  const buyBacks =
+    adjustments.filter(
+      (adjustment) =>
+        adjustment.reason
+          ?.toUpperCase()
+          .startsWith(
+            'BUYBACK:'
+          )
+    )
+
+  const recordAdjustments =
+    adjustments.filter(
+      (adjustment) =>
+        !adjustment.reason
+          ?.toUpperCase()
+          .startsWith(
+            'BUYBACK:'
+          )
+    )
+
   // --------------------------------------------------
   // STANDINGS
   // --------------------------------------------------
@@ -985,7 +1007,7 @@ export default async function HistoryPage({
             player.id,
             players,
             picks,
-            adjustments
+            recordAdjustments
           )
 
         const decisions =
@@ -1056,10 +1078,54 @@ export default async function HistoryPage({
       ?.wins ??
     0
 
+  const geoffBuyBackTotal =
+    geoff
+      ? buyBacks
+          .filter(
+            (buyBack) =>
+              buyBack.target_player_id ===
+              geoff.id
+          )
+          .reduce(
+            (
+              total,
+              buyBack
+            ) =>
+              total +
+              (Number(
+                buyBack.wins_delta
+              ) || 0),
+            0
+          )
+      : 0
+
+  const generalBuyBackTotal =
+    general
+      ? buyBacks
+          .filter(
+            (buyBack) =>
+              buyBack.target_player_id ===
+              general.id
+          )
+          .reduce(
+            (
+              total,
+              buyBack
+            ) =>
+              total +
+              (Number(
+                buyBack.wins_delta
+              ) || 0),
+            0
+          )
+      : 0
+
   const runningGeneralLead =
     STARTING_GENERAL_LEAD +
     generalSeasonWins -
-    geoffSeasonWins
+    geoffSeasonWins +
+    generalBuyBackTotal -
+    geoffBuyBackTotal
 
   // --------------------------------------------------
   // SELECTED WEEK
@@ -1101,7 +1167,7 @@ export default async function HistoryPage({
 
   const selectedWeekAdjustments =
     selectedWeek
-      ? adjustments.filter(
+      ? recordAdjustments.filter(
           (
             adjustment
           ) =>
@@ -1417,6 +1483,10 @@ export default async function HistoryPage({
 
               <div className="mt-4 border-t border-amber-800/50 pt-4 text-xs text-amber-200/60">
                 Started this season with General +20
+              </div>
+
+              <div className="mt-2 text-xs text-amber-200/60">
+                Buy Backs: Geoff {geoffBuyBackTotal} · General {generalBuyBackTotal}
               </div>
 
             </div>
