@@ -658,14 +658,19 @@ export default function DraftBoard({
     }
   }
 
-  const nextSyncIsOverdue =
-    Boolean(
-      nextSyncAt &&
-      !oddsSyncSleeping &&
-      currentTime !== null &&
-      nextSyncAt.getTime() <=
-        currentTime
-    )
+  const displayedNextSyncAt =
+    nextSyncAt &&
+    !oddsSyncSleeping &&
+    currentTime !== null &&
+    nextSyncAt.getTime() <=
+      currentTime
+      ? roundUpToNextCronSlot(
+          new Date(
+            currentTime +
+              60 * 1000
+          )
+        )
+      : nextSyncAt
 
   // --------------------------------------------------
   // ALPHABETICAL TEAM DROPDOWN
@@ -1336,18 +1341,14 @@ export default function DraftBoard({
 
                 Next sync:{' '}
 
-                {!nextSyncAt ? (
+                {!displayedNextSyncAt ? (
                   <span className="font-bold text-slate-400">
                     —
-                  </span>
-                ) : nextSyncIsOverdue ? (
-                  <span className="font-bold text-amber-400">
-                    Overdue — awaiting next cron check
                   </span>
                 ) : (
                   <span className="font-bold text-cyan-300">
                     {formatNextSync(
-                      nextSyncAt
+                      displayedNextSyncAt
                     )}
                   </span>
                 )}
