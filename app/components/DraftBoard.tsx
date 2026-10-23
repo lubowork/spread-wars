@@ -1356,6 +1356,13 @@ export default function DraftBoard({
 
             </div>
 
+            <div className="mt-1 text-xs text-slate-500">
+              Remaining games to pick:{' '}
+              <span className="font-black text-slate-300">
+                {availableGames.length}
+              </span>
+            </div>
+
             {oddsSyncSleeping &&
               nextSyncAt && (
                 <div className="mt-1 text-xs font-bold text-slate-500">
