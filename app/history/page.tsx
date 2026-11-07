@@ -885,42 +885,63 @@ export default async function HistoryPage({
     gameIds.length >
     0
   ) {
-    const {
-      data:
-        gamesData,
-      error:
-        gamesError,
-    } = await supabase
-      .from(
-        'games'
-      )
-      .select(`
-        id,
-        home_team,
-        away_team,
-        start_time,
-        completed,
-        home_score,
-        away_score
-      `)
-      .in(
-        'id',
-        gameIds
-      )
+    const GAME_QUERY_BATCH_SIZE =
+      50
 
-    if (
-      gamesError
+    for (
+      let index = 0;
+      index <
+      gameIds.length;
+      index +=
+        GAME_QUERY_BATCH_SIZE
     ) {
-      throw new Error(
-        gamesError.message
+      const batchGameIds =
+        gameIds.slice(
+          index,
+          index +
+            GAME_QUERY_BATCH_SIZE
+        )
+
+      const {
+        data:
+          gamesData,
+        error:
+          gamesError,
+      } = await supabase
+        .from(
+          'games'
+        )
+        .select(`
+          id,
+          home_team,
+          away_team,
+          start_time,
+          completed,
+          home_score,
+          away_score
+        `)
+        .in(
+          'id',
+          batchGameIds
+        )
+
+      if (
+        gamesError
+      ) {
+        throw new Error(
+          gamesError.message
+        )
+      }
+
+      games.push(
+        ...(
+          (
+            gamesData ??
+            []
+          ) as Game[]
+        )
       )
     }
-
-    games =
-      (
-        gamesData ??
-        []
-      ) as Game[]
   }
 
   // --------------------------------------------------
