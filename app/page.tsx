@@ -310,6 +310,57 @@ export default async function HomePage() {
     loggedInPlayerError ||
     !loggedInPlayer
   ) {
+    const {
+      data: diagnosticPlayers,
+      error: diagnosticPlayersError,
+    } = await supabase
+      .from('players')
+      .select('id, name, auth_user_id')
+      .order('name')
+
+    // Rebuild diagnostic preview after Vercel key rotation.
+    const serviceRoleKey =
+      process.env
+        .SUPABASE_SERVICE_ROLE_KEY ??
+      ''
+
+    const serviceRoleKeyPresent =
+      Boolean(
+        serviceRoleKey
+      )
+
+    const serviceRoleKeyType =
+      serviceRoleKey.startsWith(
+        'sb_secret_'
+      )
+        ? 'sb_secret'
+        : serviceRoleKey
+            .startsWith(
+              'eyJ'
+            )
+          ? 'legacy JWT'
+          : serviceRoleKey
+              ? 'unknown'
+              : 'missing'
+
+    let supabaseProject =
+      'Unknown'
+
+    try {
+      const supabaseUrl =
+        process.env
+          .NEXT_PUBLIC_SUPABASE_URL
+
+      if (supabaseUrl) {
+        supabaseProject =
+          new URL(
+            supabaseUrl
+          ).hostname
+      }
+    } catch {
+      // Keep diagnostic page usable even if the URL is malformed.
+    }
+
     return (
       <main className="min-h-screen bg-slate-950 p-6 text-white">
         <div className="mx-auto max-w-4xl">
@@ -319,7 +370,97 @@ export default async function HomePage() {
           </h1>
 
           <div className="mt-6 rounded-2xl border border-red-900 bg-red-950/40 p-6 text-red-200">
-            Your login is not linked to a Spread Wars player.
+            <div className="font-black">
+              Your login is not linked to a Spread Wars player.
+            </div>
+
+            <div className="mt-5 space-y-3 text-sm">
+              <div>
+                <span className="font-bold">
+                  Signed-in email:
+                </span>{' '}
+                {user.email ?? 'Unavailable'}
+              </div>
+
+              <div className="break-all">
+                <span className="font-bold">
+                  Signed-in UID:
+                </span>{' '}
+                {user.id}
+              </div>
+
+              <div className="break-all">
+                <span className="font-bold">
+                  Supabase project:
+                </span>{' '}
+                {supabaseProject}
+              </div>
+
+              <div>
+                <span className="font-bold">
+                  Service role key present:
+                </span>{' '}
+                {serviceRoleKeyPresent
+                  ? 'Yes'
+                  : 'No'}
+              </div>
+
+              <div>
+                <span className="font-bold">
+                  Service role key type:
+                </span>{' '}
+                {serviceRoleKeyType}
+              </div>
+
+              <div className="break-all">
+                <span className="font-bold">
+                  Player query error:
+                </span>{' '}
+                {diagnosticPlayersError?.message ??
+                  'None'}
+              </div>
+
+              <div>
+                <span className="font-bold">
+                  Player row count:
+                </span>{' '}
+                {diagnosticPlayers?.length ?? 0}
+              </div>
+
+              <div className="pt-2">
+                <div className="font-bold">
+                  Player rows returned:
+                </div>
+
+                <div className="mt-2 space-y-2">
+                  {(diagnosticPlayers ?? []).map(
+                    (player) => (
+                      <div
+                        key={player.id}
+                        className="rounded-lg border border-red-900/60 bg-black/20 p-3"
+                      >
+                        <div>
+                          Name:{' '}
+                          <strong>
+                            {player.name ?? 'Unnamed'}
+                          </strong>
+                        </div>
+
+                        <div className="break-all">
+                          Player ID:{' '}
+                          {player.id}
+                        </div>
+
+                        <div className="break-all">
+                          Auth UID:{' '}
+                          {player.auth_user_id ?? 'Not set'}
+                        </div>
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
 
         </div>
