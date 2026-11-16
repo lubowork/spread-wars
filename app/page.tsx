@@ -319,11 +319,29 @@ export default async function HomePage() {
       .order('name')
 
     // Rebuild diagnostic preview after Vercel key rotation.
+    const serviceRoleKey =
+      process.env
+        .SUPABASE_SERVICE_ROLE_KEY ??
+      ''
+
     const serviceRoleKeyPresent =
       Boolean(
-        process.env
-          .SUPABASE_SERVICE_ROLE_KEY
+        serviceRoleKey
       )
+
+    const serviceRoleKeyType =
+      serviceRoleKey.startsWith(
+        'sb_secret_'
+      )
+        ? 'sb_secret'
+        : serviceRoleKey
+            .startsWith(
+              'eyJ'
+            )
+          ? 'legacy JWT'
+          : serviceRoleKey
+              ? 'unknown'
+              : 'missing'
 
     let supabaseProject =
       'Unknown'
@@ -385,6 +403,13 @@ export default async function HomePage() {
                 {serviceRoleKeyPresent
                   ? 'Yes'
                   : 'No'}
+              </div>
+
+              <div>
+                <span className="font-bold">
+                  Service role key type:
+                </span>{' '}
+                {serviceRoleKeyType}
               </div>
 
               <div className="break-all">
