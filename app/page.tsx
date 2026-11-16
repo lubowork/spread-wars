@@ -312,10 +312,17 @@ export default async function HomePage() {
   ) {
     const {
       data: diagnosticPlayers,
+      error: diagnosticPlayersError,
     } = await supabase
       .from('players')
       .select('id, name, auth_user_id')
       .order('name')
+
+    const serviceRoleKeyPresent =
+      Boolean(
+        process.env
+          .SUPABASE_SERVICE_ROLE_KEY
+      )
 
     let supabaseProject =
       'Unknown'
@@ -368,6 +375,30 @@ export default async function HomePage() {
                   Supabase project:
                 </span>{' '}
                 {supabaseProject}
+              </div>
+
+              <div>
+                <span className="font-bold">
+                  Service role key present:
+                </span>{' '}
+                {serviceRoleKeyPresent
+                  ? 'Yes'
+                  : 'No'}
+              </div>
+
+              <div className="break-all">
+                <span className="font-bold">
+                  Player query error:
+                </span>{' '}
+                {diagnosticPlayersError?.message ??
+                  'None'}
+              </div>
+
+              <div>
+                <span className="font-bold">
+                  Player row count:
+                </span>{' '}
+                {diagnosticPlayers?.length ?? 0}
               </div>
 
               <div className="pt-2">
