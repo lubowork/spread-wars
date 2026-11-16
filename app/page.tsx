@@ -310,6 +310,33 @@ export default async function HomePage() {
     loggedInPlayerError ||
     !loggedInPlayer
   ) {
+    const {
+      data: geoffPlayer,
+    } = await supabase
+      .from('players')
+      .select('id, name, auth_user_id')
+      .ilike('name', 'geoff')
+      .limit(1)
+      .maybeSingle()
+
+    let supabaseProject =
+      'Unknown'
+
+    try {
+      const supabaseUrl =
+        process.env
+          .NEXT_PUBLIC_SUPABASE_URL
+
+      if (supabaseUrl) {
+        supabaseProject =
+          new URL(
+            supabaseUrl
+          ).hostname
+      }
+    } catch {
+      // Keep diagnostic page usable even if the URL is malformed.
+    }
+
     return (
       <main className="min-h-screen bg-slate-950 p-6 text-white">
         <div className="mx-auto max-w-4xl">
@@ -319,7 +346,39 @@ export default async function HomePage() {
           </h1>
 
           <div className="mt-6 rounded-2xl border border-red-900 bg-red-950/40 p-6 text-red-200">
-            Your login is not linked to a Spread Wars player.
+            <div className="font-black">
+              Your login is not linked to a Spread Wars player.
+            </div>
+
+            <div className="mt-5 space-y-3 text-sm">
+              <div>
+                <span className="font-bold">
+                  Signed-in email:
+                </span>{' '}
+                {user.email ?? 'Unavailable'}
+              </div>
+
+              <div className="break-all">
+                <span className="font-bold">
+                  Signed-in UID:
+                </span>{' '}
+                {user.id}
+              </div>
+
+              <div className="break-all">
+                <span className="font-bold">
+                  Geoff player UID:
+                </span>{' '}
+                {geoffPlayer?.auth_user_id ?? 'Not set'}
+              </div>
+
+              <div className="break-all">
+                <span className="font-bold">
+                  Supabase project:
+                </span>{' '}
+                {supabaseProject}
+              </div>
+            </div>
           </div>
 
         </div>
