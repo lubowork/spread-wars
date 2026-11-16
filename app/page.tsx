@@ -318,6 +318,7 @@ export default async function HomePage() {
       .select('id, name, auth_user_id')
       .order('name')
 
+    // Rebuild diagnostic preview after Vercel key rotation.
     const serviceRoleKeyPresent =
       Boolean(
         process.env
