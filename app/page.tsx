@@ -311,13 +311,11 @@ export default async function HomePage() {
     !loggedInPlayer
   ) {
     const {
-      data: geoffPlayer,
+      data: diagnosticPlayers,
     } = await supabase
       .from('players')
       .select('id, name, auth_user_id')
-      .ilike('name', 'geoff')
-      .limit(1)
-      .maybeSingle()
+      .order('name')
 
     let supabaseProject =
       'Unknown'
@@ -367,16 +365,43 @@ export default async function HomePage() {
 
               <div className="break-all">
                 <span className="font-bold">
-                  Geoff player UID:
-                </span>{' '}
-                {geoffPlayer?.auth_user_id ?? 'Not set'}
-              </div>
-
-              <div className="break-all">
-                <span className="font-bold">
                   Supabase project:
                 </span>{' '}
                 {supabaseProject}
+              </div>
+
+              <div className="pt-2">
+                <div className="font-bold">
+                  Player rows returned:
+                </div>
+
+                <div className="mt-2 space-y-2">
+                  {(diagnosticPlayers ?? []).map(
+                    (player) => (
+                      <div
+                        key={player.id}
+                        className="rounded-lg border border-red-900/60 bg-black/20 p-3"
+                      >
+                        <div>
+                          Name:{' '}
+                          <strong>
+                            {player.name ?? 'Unnamed'}
+                          </strong>
+                        </div>
+
+                        <div className="break-all">
+                          Player ID:{' '}
+                          {player.id}
+                        </div>
+
+                        <div className="break-all">
+                          Auth UID:{' '}
+                          {player.auth_user_id ?? 'Not set'}
+                        </div>
+                      </div>
+                    )
+                  )}
+                </div>
               </div>
             </div>
           </div>
